@@ -28,3 +28,29 @@ export function infoHash(torrent: Torrent) {
   const info = bencode.encode(bencode.decode(torrent.info));
   return crypto.createHash("sha1").update(info).digest();
 }
+
+export const BLOCK_LEN = Math.pow(2, 14);
+
+export function pieceLen(torrent, pieceIndex) {
+  const totalLength = bignum.fromBuffer(this.size(torrent)).toNumber();
+  const pieceLength = torrent.info["piece length"];
+
+  const lastPieceLength = totalLength % pieceLength;
+  const lastPieceIndex = Math.floor(totalLength / pieceLength);
+
+  return lastPieceIndex === pieceIndex ? lastPieceLength : pieceLength;
+}
+
+export function blocksPerPiece(torrent, pieceIndex) {
+  const pieceLength = this.pieceLen(torrent, pieceIndex);
+  return Math.ceil(pieceLength / this.BLOCK_LEN);
+}
+
+export function blockLen(torrent, pieceIndex, blockIndex) {
+  const pieceLength = this.pieceLen(torrent, pieceIndex);
+
+  const lastPieceLength = pieceLength % this.BLOCK_LEN;
+  const lastPieceIndex = Math.floor(pieceLength / this.BLOCK_LEN);
+
+  return blockIndex === lastPieceIndex ? lastPieceLength : this.BLOCK_LEN;
+}
