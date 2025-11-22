@@ -3,7 +3,7 @@ import type { Torrent } from "../types";
 import { genId } from "./genId";
 import { infoHash } from "./parser";
 
-export function buildHandshake(torrent: Torrent) {
+export function buildHandshake(torrent: Torrent): Buffer {
   const buf = Buffer.alloc(68);
   // pstrlen
   buf.writeUInt8(19, 0);
@@ -15,15 +15,15 @@ export function buildHandshake(torrent: Torrent) {
   // info hash
   infoHash(torrent).copy(buf, 28);
   // peer id
-  buf.write(genId().toString("utf-8"));
+  genId().copy(buf, 48); // genId() returns a Buffer, copy it directly
   return buf;
 }
 
-export function buildKeepAlive() {
+export function buildKeepAlive(): Buffer {
   return Buffer.alloc(4);
 }
 
-export function buildChoke() {
+export function buildChoke(): Buffer {
   const buf = Buffer.alloc(5);
   // length
   buf.writeUInt32BE(1, 0);
@@ -32,7 +32,7 @@ export function buildChoke() {
   return buf;
 }
 
-export function buildUnchoke() {
+export function buildUnchoke(): Buffer {
   const buf = Buffer.alloc(5);
   // length
   buf.writeUInt32BE(1, 0);
@@ -41,7 +41,7 @@ export function buildUnchoke() {
   return buf;
 }
 
-export function buildInterested() {
+export function buildInterested(): Buffer {
   const buf = Buffer.alloc(5);
   // length
   buf.writeUInt32BE(1, 0);
@@ -50,7 +50,7 @@ export function buildInterested() {
   return buf;
 }
 
-export function buildUninterested() {
+export function buildUninterested(): Buffer {
   const buf = Buffer.alloc(5);
   // length
   buf.writeUInt32BE(1, 0);
@@ -59,7 +59,7 @@ export function buildUninterested() {
   return buf;
 }
 
-export function buildHave(payload: number) {
+export function buildHave(payload: number): Buffer {
   const buf = Buffer.alloc(9);
   // length
   buf.writeUInt32BE(5, 0);
@@ -70,8 +70,8 @@ export function buildHave(payload: number) {
   return buf;
 }
 
-export function buildBitfield(bitfield: Buffer) {
-  const buf = Buffer.alloc(14);
+export function buildBitfield(bitfield: Buffer): Buffer {
+  const buf = Buffer.alloc(5 + bitfield.length); // Correct buffer size
   // length
   buf.writeUInt32BE(bitfield.length + 1, 0);
   // id
@@ -81,11 +81,13 @@ export function buildBitfield(bitfield: Buffer) {
   return buf;
 }
 
-export function buildRequest(payload: {
+export type RequestPayload = {
   index: number;
   begin: number;
   length: number;
-}) {
+};
+
+export function buildRequest(payload: RequestPayload): Buffer {
   const buf = Buffer.alloc(17);
   // length
   buf.writeUInt32BE(13, 0);
@@ -100,12 +102,14 @@ export function buildRequest(payload: {
   return buf;
 }
 
-export function buildPiece(payload: {
+export type PiecePayload = {
   index: number;
   begin: number;
-  length: number;
   block: Buffer;
-}) {
+  length: number; // Added length property
+};
+
+export function buildPiece(payload: PiecePayload): Buffer {
   const buf = Buffer.alloc(payload.block.length + 13);
   // length
   buf.writeUInt32BE(payload.block.length + 9, 0);
@@ -120,11 +124,7 @@ export function buildPiece(payload: {
   return buf;
 }
 
-export function buildCancel(payload: {
-  index: number;
-  begin: number;
-  length: number;
-}) {
+export function buildCancel(payload: RequestPayload): Buffer {
   const buf = Buffer.alloc(17);
   // length
   buf.writeUInt32BE(13, 0);
@@ -139,7 +139,7 @@ export function buildCancel(payload: {
   return buf;
 }
 
-export function buildPort(payload: number) {
+export function buildPort(payload: number): Buffer {
   const buf = Buffer.alloc(7);
   // length
   buf.writeUInt32BE(3, 0);
@@ -150,16 +150,29 @@ export function buildPort(payload: number) {
   return buf;
 }
 
-export function parse(msg) {
+export type ParsedMessage = {
+  size: number;
+  id: number | null;
+  payload: any; // This could be more specific based on ID
+};
+
+export function parse(msg: Buffer): ParsedMessage {
   const id = msg.length > 4 ? msg.readInt8(4) : null;
-  let payload = msg.length > 5 ? msg.slice(5) : null;
-  if (id === 6 || id === 7 || id === 8) {
-    const rest = payload.slice(8);
+  let payload: any = msg.length > 5 ? msg.slice(5) : null; // Can be Buffer or object
+
+  if (id === 6 || id === 8) { // Request, Cancel
     payload = {
       index: payload.readInt32BE(0),
       begin: payload.readInt32BE(4),
+      length: payload.readInt32BE(8),
     };
-    payload[id === 7 ? "block" : "length"] = rest;
+  } else if (id === 7) { // Piece
+    payload = {
+      index: payload.readInt32BE(0),
+      begin: payload.readInt32BE(4),
+      block: payload.slice(8),
+      length: payload.slice(8).length, // Extract length from block
+    };
   }
 
   return {

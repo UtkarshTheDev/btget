@@ -3,7 +3,14 @@ export type Peer = {
   port: number;
 };
 
+export type Info = {
+  length: number;
+  name: Buffer;
+  "piece length": number;
+  pieces: Buffer;
+};
+
 export type Torrent = {
-  announce: Buffer;
-  info: Buffer;
+  announce: string;
+  info: Info;
 };

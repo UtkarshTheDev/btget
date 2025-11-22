@@ -1,33 +1,44 @@
-import { BLOCK_LEN, blocksPerPiece } from "./parser";
+import { BLOCK_LEN, blocksPerPiece, blockLen } from "./parser";
+import type { Torrent } from "../types";
 
-export default class {
-  constructor(torrent) {
+export type PieceBlock = {
+  index: number;
+  begin: number;
+  length: number;
+};
+
+export default class Queue {
+  _torrent: Torrent;
+  _queue: PieceBlock[];
+  choked: boolean;
+
+  constructor(torrent: Torrent) {
     this._torrent = torrent;
     this._queue = [];
     this.choked = true;
   }
 
-  queue(pieceIndex) {
+  queue(pieceIndex: number): void {
     const nBlocks = blocksPerPiece(this._torrent, pieceIndex);
     for (let i = 0; i < nBlocks; i++) {
-      const pieceBlock = {
+      const pieceBlock: PieceBlock = {
         index: pieceIndex,
         begin: i * BLOCK_LEN,
-        length: this.blockLen(this._torrent, pieceIndex, i),
+        length: blockLen(this._torrent, pieceIndex, i),
       };
       this._queue.push(pieceBlock);
     }
   }
 
-  deque() {
+  deque(): PieceBlock | undefined {
     return this._queue.shift();
   }
 
-  peek() {
+  peek(): PieceBlock | undefined {
     return this._queue[0];
   }
 
-  length() {
+  length(): number {
     return this._queue.length;
   }
 }

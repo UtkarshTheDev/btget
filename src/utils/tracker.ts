@@ -8,7 +8,7 @@ import { infoHash, size } from "./parser";
 
 export function getPeers(torrent: Torrent, callback: (peers: Peer[]) => void) {
   const socket = dgram.createSocket("udp4");
-  const url = torrent.announce.toString("utf-8");
+  const url = torrent.announce; // torrent.announce is already a string
 
   udpSend(socket, buildConnReq(), url, callback);
 
@@ -39,6 +39,7 @@ function udpSend(
     url.hostname,
     (err: Error | null) => {
       if (err) {
+        console.error("UDP Send Error:", err);
         callback([]);
         socket.close();
       }
@@ -60,8 +61,8 @@ function respType(resp: Buffer) {
 function buildConnReq() {
   const buf = Buffer.alloc(16);
 
-  buf.writeUInt32BE(0x4_17, 0); // connection id part 1
-  buf.writeUInt32BE(0x27_10_19_80, 4);
+  buf.writeUInt32BE(0x4_17_27_10, 0); // connection id part 1 (64-bit integer, but written as two 32-bit for simplicity)
+  buf.writeUInt32BE(0x19_80, 4); // connection id part 2
   buf.writeUInt32BE(0, 8); // action (0 = connect)
 
   crypto.randomBytes(4).copy(buf, 12); // transaction id
@@ -88,13 +89,16 @@ function buildAnnounceReq(connId: Buffer, torrent: Torrent, port = 6881) {
   // downloaded
   Buffer.alloc(8).copy(buf, 56);
   // left
-  size(torrent).copy(buf, 64);
+  const torrentSize = size(torrent);
+  const sizeBuf = Buffer.alloc(8);
+  sizeBuf.writeBigInt64BE(torrentSize, 0);
+  sizeBuf.copy(buf, 64);
   // uploaded
   Buffer.alloc(8).copy(buf, 72);
   // event
   buf.writeUInt32BE(0, 80);
-  // ip address
-  buf.writeUInt32BE(0, 80);
+  // ip address (0 indicates current IP)
+  buf.writeUInt32BE(0, 84); // Fix: this was overwriting event
   // key
   crypto.randomBytes(4).copy(buf, 88);
   // num want
@@ -112,7 +116,10 @@ function parseAnnounceResp(resp: Buffer) {
     leechers: resp.readUInt32BE(12),
     seeders: resp.readUInt32BE(16),
     peers: group(resp.slice(20), 6).map((buf) => {
-      return { ip: buf.slice(0, 4).join("."), port: buf.readUInt16BE(4) };
+      return {
+        ip: `${buf.readUInt8(0)}.${buf.readUInt8(1)}.${buf.readUInt8(2)}.${buf.readUInt8(3)}`,
+        port: buf.readUInt16BE(4),
+      };
     }),
   };
 }

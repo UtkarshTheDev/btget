@@ -7,9 +7,9 @@
     "allowJs": false,
 
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
-    "noEmit": true,
+    "esModuleInterop": true,
+    "outDir": "./dist",
 
     "strict": true,
     "skipLibCheck": true,
