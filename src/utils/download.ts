@@ -8,6 +8,12 @@ import Pieces from "./pieces";
 
 export function downloadTorrent(torrent: Torrent, path: string) {
   getPeers(torrent, (peers: Peer[]) => {
+    console.log("Found peers:", peers.length);
+    if (peers.length === 0) {
+      console.error("No peers found. Cannot download.");
+      return;
+    }
+    
     const pieces = new Pieces(torrent);
     const file = openSync(path, "w"); // Open file for writing
     peers.forEach((peer) => download(peer, torrent, pieces, file));
@@ -16,23 +22,45 @@ export function downloadTorrent(torrent: Torrent, path: string) {
 
 function download(peer: Peer, torrent: Torrent, pieces: Pieces, file: number) {
   const socket = new Socket();
+  console.log(`Connecting to peer: ${peer.ip}:${peer.port}`);
+  
+  // Set connection timeout
+  socket.setTimeout(15000); // 15 second timeout
+  
   socket.connect(peer.port, peer.ip, () => {
+    console.log(`Connected to peer: ${peer.ip}:${peer.port}`);
+    console.log(`Sending handshake to: ${peer.ip}:${peer.port}`);
     socket.write(buildHandshake(torrent)); // Send handshake immediately
   });
 
-  socket.on("data", () => {
-    // console.log("Received data from peer:", data.length); // Muted for less verbose output
+  socket.on("data", (data) => {
+    console.log(`Received ${data.length} bytes from peer: ${peer.ip}:${peer.port}`);
   });
   socket.on("error", (error) => {
-    console.error("Socket error:", error);
-    socket.end();
+    console.error(`Socket error with peer ${peer.ip}:${peer.port}:`, error.message);
+    socket.destroy();
   });
   socket.on("end", () => {
-    console.log("Socket ended.");
+    console.log(`Socket ended with peer ${peer.ip}:${peer.port}`);
+  });
+  socket.on("timeout", () => {
+    console.error(`Socket timeout with peer ${peer.ip}:${peer.port}`);
+    socket.destroy();
+  });
+  socket.on("close", (hadError) => {
+    console.log(`Socket closed with peer ${peer.ip}:${peer.port}, hadError: ${hadError}`);
   });
 
   const queue = new Queue(torrent);
-  onWholeMsg(socket, (msg) => msgHandler(msg, socket, pieces, queue, torrent, file));
+  
+  // Initialize queue with all pieces that need to be downloaded
+  const totalPieces = torrent.info.pieces.length / 20;
+  for (let i = 0; i < totalPieces; i++) {
+    queue.queue(i);
+  }
+  console.log(`Queued ${totalPieces} pieces for download from ${peer.ip}:${peer.port}`);
+  
+  onWholeMsg(socket, (msg) => msgHandler(msg, socket, pieces, queue, torrent, file, peer));
 }
 
 function onWholeMsg(socket: Socket, callback: (data: Buffer) => void) {
@@ -45,13 +73,11 @@ function onWholeMsg(socket: Socket, callback: (data: Buffer) => void) {
     // Function to calculate message length
     const getMessageLength = (): number => {
       if (handshake && savedBuf.length >= 68) {
-        // Handshake message is 68 bytes
         return 68;
       } else if (!handshake && savedBuf.length >= 4) {
-        // Normal message, length is in the first 4 bytes
         return savedBuf.readInt32BE(0) + 4;
       }
-      return -1; // Not enough data for a full message
+      return -1;
     };
 
     let msgLen = getMessageLength();
@@ -60,7 +86,7 @@ function onWholeMsg(socket: Socket, callback: (data: Buffer) => void) {
       savedBuf = savedBuf.slice(msgLen);
       if (handshake) {
         handshake = false;
-        msgLen = getMessageLength(); // Re-evaluate msgLen after handshake
+        msgLen = getMessageLength();
       } else {
         msgLen = getMessageLength();
       }
@@ -74,28 +100,31 @@ function msgHandler(
   pieces: Pieces,
   queue: Queue,
   torrent: Torrent,
-  file: number
+  file: number,
+  peer: Peer
 ) {
   if (isHandshake(msg)) {
+    console.log(`Handshake received from: ${peer.ip}:${peer.port}`);
     socket.write(buildInterested());
   } else {
     const m: ParsedMessage = parse(msg);
+    console.log(`Message received from ${peer.ip}:${peer.port}: ID=${m.id}`);
 
     switch (m.id) {
       case 0: // Choke
-        chokeHandler(queue);
+        chokeHandler(queue, peer);
         break;
       case 1: // Unchoke
-        unchokeHandler(socket, pieces, queue);
+        unchokeHandler(socket, pieces, queue, peer);
         break;
       case 4: // Have
-        haveHandler(m.payload as number);
+        haveHandler(m.payload as number, peer);
         break;
       case 5: // Bitfield
-        bitfieldHandler(m.payload as Buffer);
+        bitfieldHandler(m.payload as Buffer, peer);
         break;
       case 7: // Piece
-        pieceHandler(socket, pieces, queue, torrent, file, m.payload as PiecePayload);
+        pieceHandler(socket, pieces, queue, torrent, file, m.payload as PiecePayload, peer);
         break;
       default:
         // Handle other message types or ignore
@@ -106,55 +135,56 @@ function msgHandler(
 
 function isHandshake(msg: Buffer): boolean {
   return (
-    msg.length === 68 && // Handshake messages are typically 68 bytes
-    msg.readUInt8(0) === 19 && // pstrlen is 19
+    msg.length === 68 &&
+    msg.readUInt8(0) === 19 &&
     msg.toString("utf8", 1, 20) === "BitTorrent protocol"
   );
 }
 
-function chokeHandler(queue: Queue) {
+function chokeHandler(queue: Queue, peer: Peer) {
   queue.choked = true;
-  console.log("Choked by peer.");
+  console.log(`Choked by peer: ${peer.ip}:${peer.port}`);
 }
 
-function unchokeHandler(socket: Socket, pieces: Pieces, queue: Queue) {
+function unchokeHandler(socket: Socket, pieces: Pieces, queue: Queue, peer: Peer) {
   queue.choked = false;
-  console.log("Unchoked by peer.");
-  requestPiece(socket, pieces, queue);
+  console.log(`Unchoked by peer: ${peer.ip}:${peer.port}`);
+  requestPiece(socket, pieces, queue, peer);
 }
 
-function requestPiece(socket: Socket, pieces: Pieces, queue: Queue) {
+function requestPiece(socket: Socket, pieces: Pieces, queue: Queue, peer: Peer) {
   if (queue.choked) {
+    console.log(`Queue is choked, not requesting piece from ${peer.ip}:${peer.port}`);
+    return;
+  }
+
+  if (queue.length() === 0) {
+    console.log(`Queue is empty, not requesting piece from ${peer.ip}:${peer.port}`);
     return;
   }
 
   while (queue.length() > 0) {
     const pieceBlock = queue.peek();
-    if (!pieceBlock) return; // Should not happen if queue.length() > 0
+    if (!pieceBlock) return;
 
     if (pieces.needed(pieceBlock)) {
+      console.log(`Requesting piece ${pieceBlock.index}, block ${pieceBlock.begin} from ${peer.ip}:${peer.port}`);
       socket.write(buildRequest(pieceBlock as RequestPayload));
       pieces.addRequested(pieceBlock);
-      queue.deque(); // Remove from queue after requesting
-      break; // Request one block at a time
+      queue.deque();
+      break;
     } else {
-      queue.deque(); // This piece block is not needed, remove it
+      queue.deque();
     }
   }
 }
 
-function haveHandler(pieceIndex: number) {
-  console.log("Received 'have' message for piece:", pieceIndex);
-  // No direct action needed here in terms of requesting, as we rely on unchoke
-  // and bitfield to know what pieces a peer has. This is mostly for informing
-  // other peers about our pieces.
+function haveHandler(pieceIndex: number, peer: Peer) {
+  console.log(`Received 'have' message for piece ${pieceIndex} from ${peer.ip}:${peer.port}`);
 }
 
-function bitfieldHandler(bitfield: Buffer) {
-  console.log("Received bitfield:", bitfield.toString('hex'));
-  // This bitfield tells us what pieces the peer has.
-  // We can update our internal state based on this, but for now,
-  // we'll rely on 'have' messages or unchoke.
+function bitfieldHandler(bitfield: Buffer, peer: Peer) {
+  console.log(`Received bitfield from ${peer.ip}:${peer.port}:`, bitfield.toString('hex'));
 }
 
 function pieceHandler(
@@ -163,15 +193,16 @@ function pieceHandler(
   queue: Queue,
   torrent: Torrent,
   file: number,
-  pieceResp: PiecePayload
+  pieceResp: PiecePayload,
+  peer: Peer
 ) {
-  console.log("Received piece block:", pieceResp.index, pieceResp.begin, pieceResp.block.length);
+  console.log(`Received piece block ${pieceResp.index}, block ${pieceResp.begin} from ${peer.ip}:${peer.port}`);
   pieces.addReceived(pieceResp);
 
   const offset =
     pieceResp.index * (torrent.info["piece length"] as number) + pieceResp.begin;
   write(file, pieceResp.block, 0, pieceResp.block.length, offset, (err) => {
-    if (err) console.error("File write error:", err);
+    if (err) console.error(`File write error for piece ${pieceResp.index}:`, err);
   });
 
   if (pieces.isDone()) {
@@ -179,6 +210,6 @@ function pieceHandler(
     socket.end();
     closeSync(file);
   } else {
-    requestPiece(socket, pieces, queue);
+    requestPiece(socket, pieces, queue, peer);
   }
 }

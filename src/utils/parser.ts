@@ -4,8 +4,23 @@ import fs from 'fs';
 import type { Torrent, Info } from '../types';
 
 export function open(filepath: string): Torrent {
+  console.log("Reading torrent file...");
   const fileData = fs.readFileSync(filepath);
-  const decodedData = bencode.decode(fileData, 'utf8');
+  console.log("Decoding torrent file...");
+  const decodedData = bencode.decode(fileData);
+  console.log("Torrent file decoded.");
+
+  // Convert announce to string if it's a buffer or Uint8Array
+  if (decodedData.announce && typeof decodedData.announce !== 'string') {
+    decodedData.announce = Buffer.from(decodedData.announce).toString('utf8');
+  }
+  
+  // Ensure info.name is properly converted to Buffer for consistent handling
+  if (decodedData.info && decodedData.info.name) {
+    if (!Buffer.isBuffer(decodedData.info.name)) {
+      decodedData.info.name = Buffer.from(decodedData.info.name);
+    }
+  }
 
   // Assuming decodedData has the structure of a Torrent
   // This might need more robust validation
@@ -14,15 +29,14 @@ export function open(filepath: string): Torrent {
 
 export function size(torrent: Torrent): bigint {
   const info = torrent.info as Info;
-  if (Array.isArray((info as any).files)) { // Multi-file torrent
-    const files = (info as any).files as { length: number; }[];
-    const totalSize = files
+  if (info.files && Array.isArray(info.files)) { // Multi-file torrent
+    const totalSize = info.files
       .map((file) => BigInt(file.length))
       .reduce((a, b) => a + b, BigInt(0));
     return totalSize;
   }
   // Single-file torrent
-  return BigInt(info.length);
+  return BigInt(info.length || 0);
 }
 
 export function infoHash(torrent: Torrent): Buffer {
