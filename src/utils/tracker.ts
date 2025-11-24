@@ -2,16 +2,80 @@ import { Buffer } from "buffer";
 import crypto from "crypto";
 import dgram from "dgram";
 import bencode from "bencode";
-import type { Peer, Torrent } from "../types";
-import { genId } from "./genId";
-import group from "./group";
-import { infoHash, size } from "./parser";
+import type { Peer, Torrent } from "../types/index.js";
+import { genId } from "./genId.js";
+import group from "./group.js";
+import { infoHash, size } from "./parser.js";
 
 export function getPeers(torrent: Torrent, callback: (peers: Peer[]) => void) {
   console.log("getPeers called for torrent:", torrent.info.name.toString());
-  const urlStr = torrent.announce;
-  console.log("Tracker URL for getPeers:", urlStr);
+  
+  const urls = new Set<string>();
+  if (torrent.announce) {
+    urls.add(torrent.announce);
+  }
+  if (torrent["announce-list"]) {
+    torrent["announce-list"].forEach(tier => {
+      tier.forEach(url => urls.add(url));
+    });
+  }
 
+  console.log(`Found ${urls.size} tracker URLs.`);
+  
+  const seenPeers = new Set<string>();
+  const allPeers: Peer[] = [];
+  let completedTrackers = 0;
+  let callbackCalled = false;
+  const totalTrackers = urls.size;
+
+  if (totalTrackers === 0) {
+    callback([]);
+    return;
+  }
+
+  // Set a timeout to ensure we don't wait forever
+  const timeout = setTimeout(() => {
+    if (!callbackCalled) {
+      callbackCalled = true;
+      if (allPeers.length > 0) {
+        callback([...allPeers]);
+      } else {
+        callback([]);
+      }
+    }
+  }, 10000); // 10 second timeout
+
+  urls.forEach(urlStr => {
+    getPeersFromUrl(torrent, urlStr, (peers) => {
+      if (callbackCalled) return;
+      
+      const newPeers = peers.filter(p => {
+        const key = `${p.ip}:${p.port}`;
+        if (seenPeers.has(key)) return false;
+        seenPeers.add(key);
+        return true;
+      });
+      
+      if (newPeers.length > 0) {
+        console.log(`Got ${newPeers.length} new peers from ${urlStr}`);
+        allPeers.push(...newPeers);
+      }
+      
+      completedTrackers++;
+      
+      // Call callback once when all trackers complete or we have enough peers
+      if (completedTrackers === totalTrackers || allPeers.length >= 20) {
+        if (!callbackCalled) {
+          callbackCalled = true;
+          clearTimeout(timeout);
+          callback([...allPeers]);
+        }
+      }
+    });
+  });
+}
+
+function getPeersFromUrl(torrent: Torrent, urlStr: string, callback: (peers: Peer[]) => void) {
   let url: URL;
   try {
     url = new URL(urlStr);
@@ -25,80 +89,82 @@ export function getPeers(torrent: Torrent, callback: (peers: Peer[]) => void) {
   } else if (url.protocol === 'udp:') {
     getPeersUdp(torrent, urlStr, callback);
   } else {
-    console.error("Unsupported tracker protocol:", url.protocol);
+    // console.warn("Unsupported tracker protocol:", url.protocol);
   }
 }
 
 function getPeersUdp(torrent: Torrent, url: string, callback: (peers: Peer[]) => void) {
   const socket = dgram.createSocket("udp4");
   
-  udpSend(socket, buildConnReq(), url, callback);
+  // Set a timeout for the entire transaction
+  const transactionTimeout = setTimeout(() => {
+    // console.error(`UDP Tracker timeout for ${url}`);
+    try { socket.close(); } catch(e) {}
+  }, 15000);
 
-  const timeout = setTimeout(() => {
-    console.error("Tracker request timed out.");
-    socket.close();
-    callback([]);
-  }, 5000);
+  udpSend(socket, buildConnReq(), url, (err) => {
+      if (err) {
+          clearTimeout(transactionTimeout);
+          try { socket.close(); } catch(e) {}
+      }
+  });
 
   socket.on("message", (msg) => {
-    clearTimeout(timeout); // Clear the timeout as we received a response
-    console.log("Message received from tracker:", msg);
     if (respType(msg) === "connect") {
-      console.log("Tracker connect response received.");
       const connResp = parseConnResp(msg);
       const announceReq = buildAnnounceReq(connResp.connectionId, torrent);
-      udpSend(socket, announceReq, url, callback);
+      udpSend(socket, announceReq, url, () => {});
     } else if (respType(msg) === "announce") {
-      console.log("Tracker announce response received.");
+      clearTimeout(transactionTimeout);
       const announceResp = parseAnnounceResp(msg);
       callback(announceResp.peers);
+      try { socket.close(); } catch(e) {}
     }
   });
 
-  socket.on("listening", () => {
-    console.log("UDP socket listening.");
-  });
-
-  socket.on("error", (err) => {
-    clearTimeout(timeout);
-    console.error("UDP socket error:", err);
-    socket.close();
+  socket.on("error", () => {
+    clearTimeout(transactionTimeout);
+    // console.error(`UDP socket error for ${url}:`, err.message);
+    try { socket.close(); } catch(e) {}
   });
 }
 
 async function getPeersHttp(torrent: Torrent, urlStr: string, callback: (peers: Peer[]) => void) {
-  console.log("Sending HTTP request to tracker:", urlStr);
+  // console.log("Sending HTTP request to tracker:", urlStr);
   
   const infoHashBuf = infoHash(torrent);
   const peerIdBuf = genId();
   
-  // Manually construct query string because URLSearchParams encodes differently than what trackers expect for binary data
   let query = `?info_hash=${escapeBytes(infoHashBuf)}&peer_id=${escapeBytes(peerIdBuf)}`;
   query += `&port=6881&uploaded=0&downloaded=0&left=${size(torrent)}&compact=1`;
 
   const fullUrl = urlStr + query;
-  console.log("Full HTTP Tracker URL:", fullUrl);
 
   try {
-    const response = await fetch(fullUrl);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetch(fullUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+        throw new Error(`HTTP status ${response.status}`);
+    }
+
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     
     const decoded = bencode.decode(buffer);
-    console.log("HTTP Tracker response decoded.");
     
     if (decoded.failure) {
-      console.error("Tracker returned failure:", decoded.failure.toString());
-      callback([]);
+      // console.error(`Tracker ${urlStr} returned failure:`, decoded.failure.toString());
       return;
     }
 
     if (decoded.peers) {
       let peers: Peer[] = [];
       if (Buffer.isBuffer(decoded.peers) || decoded.peers instanceof Uint8Array) {
-        // Binary model - convert Uint8Array to Buffer if needed
         const peerBuffer = Buffer.isBuffer(decoded.peers) ? decoded.peers : Buffer.from(decoded.peers);
-        console.log(`Parsing binary peer data: ${peerBuffer.length} bytes`);
         peers = group(peerBuffer, 6).map((buf) => {
           return {
             ip: `${buf.readUInt8(0)}.${buf.readUInt8(1)}.${buf.readUInt8(2)}.${buf.readUInt8(3)}`,
@@ -106,13 +172,9 @@ async function getPeersHttp(torrent: Torrent, urlStr: string, callback: (peers: 
           };
         });
       } else if (Array.isArray(decoded.peers)) {
-        // Dictionary model (list of dicts)
         peers = decoded.peers.map((peer: any) => {
-          // Peer might be Buffer keys if bencode decoded it that way
-          // Ensure we convert Buffer/Uint8Array to string
           let ip = peer.ip;
           if (ip) {
-             // If it's a buffer or array like object of bytes, convert to string
              if (Buffer.isBuffer(ip) || ArrayBuffer.isView(ip) || Array.isArray(ip)) {
                ip = Buffer.from(ip as any).toString('utf8');
              }
@@ -121,8 +183,6 @@ async function getPeersHttp(torrent: Torrent, urlStr: string, callback: (peers: 
           return { ip, port };
         }).filter((p: any) => p.ip && p.port);
       }
-      console.log(`Found ${peers.length} peers from HTTP tracker.`);
-      console.log("Peers:", peers.map(p => `${p.ip}:${p.port}`).join(", "));
       
       if (decoded.peers6) {
         if (Buffer.isBuffer(decoded.peers6)) {
@@ -132,27 +192,25 @@ async function getPeersHttp(torrent: Torrent, urlStr: string, callback: (peers: 
               port: buf.readUInt16BE(16),
             };
           });
-          console.log(`Found ${peers6.length} IPv6 peers from HTTP tracker.`);
           peers = peers.concat(peers6);
         }
       }
       
       callback(peers);
-    } else {
-      console.log("No peers found in HTTP tracker response.");
-      callback([]);
     }
 
-  } catch (err) {
-    console.error("HTTP Tracker Error:", err);
-    callback([]);
+  } catch {
+    // console.error(`HTTP Tracker Error for ${urlStr}:`, err);
   }
 }
 
 function escapeBytes(buf: Buffer): string {
   let str = '';
   for (let i = 0; i < buf.length; i++) {
-    str += '%' + buf[i].toString(16).padStart(2, '0');
+    const byte = buf[i];
+    if (byte !== undefined) {
+      str += '%' + byte.toString(16).padStart(2, '0');
+    }
   }
   return str;
 }
@@ -161,11 +219,16 @@ function udpSend(
   socket: dgram.Socket,
   msg: Buffer,
   rawUrl: string,
-  callback: (peers: Peer[]) => void
+  callback: (err?: Error) => void
 ) {
-  console.log("Sending UDP message to:", rawUrl);
-  const url = new URL(rawUrl);
-  const port = url.port ? Number.parseInt(url.port, 10) : 6969; // Use port 6969 as default
+  let url: URL;
+  try {
+      url = new URL(rawUrl);
+  } catch(e) {
+      callback(new Error("Invalid URL"));
+      return;
+  }
+  const port = url.port ? Number.parseInt(url.port, 10) : 6969;
 
   socket.send(
     msg,
@@ -175,11 +238,9 @@ function udpSend(
     url.hostname,
     (err: Error | null) => {
       if (err) {
-        console.error("UDP Send Error:", err);
-        callback([]);
-        socket.close();
+        callback(err);
       } else {
-        console.log("UDP message sent successfully.");
+        callback();
       }
     }
   );
@@ -199,11 +260,11 @@ function respType(resp: Buffer) {
 function buildConnReq() {
   const buf = Buffer.alloc(16);
 
-  buf.writeUInt32BE(0x4_17_27_10, 0); // connection id part 1 (64-bit integer, but written as two 32-bit for simplicity)
-  buf.writeUInt32BE(0x19_80, 4); // connection id part 2
-  buf.writeUInt32BE(0, 8); // action (0 = connect)
+  buf.writeUInt32BE(0x4_17_27_10, 0);
+  buf.writeUInt32BE(0x19_80, 4);
+  buf.writeUInt32BE(0, 8);
 
-  crypto.randomBytes(4).copy(buf, 12); // transaction id
+  crypto.randomBytes(4).copy(buf, 12);
 
   return buf;
 }
@@ -218,30 +279,22 @@ function parseConnResp(resp: Buffer) {
 
 function buildAnnounceReq(connId: Buffer, torrent: Torrent, port = 6881) {
   const buf = Buffer.alloc(98);
-  connId.copy(buf, 0); // connection id
-  buf.writeUInt32BE(1, 8); // action (1 = announce)
-  crypto.randomBytes(4).copy(buf, 12); // transaction id
+  connId.copy(buf, 0);
+  buf.writeUInt32BE(1, 8);
+  crypto.randomBytes(4).copy(buf, 12);
 
-  infoHash(torrent).copy(buf, 16); // info hash
+  infoHash(torrent).copy(buf, 16);
   genId().copy(buf, 36);
-  // downloaded
   Buffer.alloc(8).copy(buf, 56);
-  // left
   const torrentSize = size(torrent);
   const sizeBuf = Buffer.alloc(8);
   sizeBuf.writeBigInt64BE(torrentSize, 0);
   sizeBuf.copy(buf, 64);
-  // uploaded
   Buffer.alloc(8).copy(buf, 72);
-  // event
   buf.writeUInt32BE(0, 80);
-  // ip address (0 indicates current IP)
-  buf.writeUInt32BE(0, 84); // Fix: this was overwriting event
-  // key
+  buf.writeUInt32BE(0, 84);
   crypto.randomBytes(4).copy(buf, 88);
-  // num want
   buf.writeInt32BE(-1, 92);
-  // port
   buf.writeUInt16BE(port, 96);
 
   return buf;

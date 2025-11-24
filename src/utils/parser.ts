@@ -1,7 +1,7 @@
 import bencode from 'bencode';
 import crypto from 'crypto';
 import fs from 'fs';
-import type { Torrent, Info } from '../types';
+import type { Torrent, Info } from '../types/index.js';
 
 export function open(filepath: string): Torrent {
   console.log("Reading torrent file...");
@@ -13,6 +13,17 @@ export function open(filepath: string): Torrent {
   // Convert announce to string if it's a buffer or Uint8Array
   if (decodedData.announce && typeof decodedData.announce !== 'string') {
     decodedData.announce = Buffer.from(decodedData.announce).toString('utf8');
+  }
+
+  if (decodedData["announce-list"]) {
+    decodedData["announce-list"] = decodedData["announce-list"].map((tier: any) => {
+      return tier.map((url: any) => {
+        if (Buffer.isBuffer(url) || url instanceof Uint8Array) {
+          return Buffer.from(url).toString("utf8");
+        }
+        return url;
+      });
+    });
   }
   
   // Ensure info.name is properly converted to Buffer for consistent handling

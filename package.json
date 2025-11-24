@@ -1,19 +1,37 @@
 {
   "name": "bittorrent-client",
-  "module": "index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "bittorrent-client": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "build": "tsc",
-    "start": "bun run dist/index.js",
+    "build:ts": "tsc",
+    "start": "node dist/index.js",
+    "cli": "bun run build && bun run start",
+    "download": "bun run build && node dist/index.js download",
+    "info": "bun run build && node dist/index.js info",
+    "torrent:download": "bun run build && node dist/index.js download",
+    "torrent:info": "bun run build && node dist/index.js info",
     "lint": "biome lint .",
-    "format": "biome format ."
+    "format": "biome format .",
+    "clean": "rm -rf dist",
+    "rebuild": "bun run clean && bun run build",
+    "prepublishOnly": "npm run build"
   },
   "private": true,
   "devDependencies": {
     "@biomejs/biome": "2.3.7",
     "@types/bun": "latest",
+    "@types/cli-progress": "^3.11.6",
     "@types/node": "^24.5.2",
+    "@types/yargs": "^17.0.35",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.6",
     "ultracite": "5.3.8"
@@ -32,9 +50,11 @@
     "bencode": "^4.0.0",
     "bignum": "^0.13.1",
     "buffer": "^6.0.3",
+    "cli-progress": "^3.12.0",
     "crypto": "^1.0.1",
     "dgram": "^1.0.1",
-    "fs": "^0.0.1-security"
+    "fs": "^0.0.1-security",
+    "yargs": "^18.0.0"
   },
   "trustedDependencies": [
     "bignum"

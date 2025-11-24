@@ -1,7 +1,7 @@
-import { BLOCK_LEN, blocksPerPiece } from "./parser";
-import type { Torrent } from "../types";
-import type { PieceBlock } from "./queue";
-import type { PiecePayload } from "./messages"; // Import PiecePayload
+import { BLOCK_LEN, blocksPerPiece } from "./parser.js";
+import type { Torrent } from "../types/index.js";
+import type { PieceBlock } from "./queue.js";
+import type { PiecePayload } from "./messages.js"; // Import PiecePayload
 
 export default class Pieces {
   _requested: boolean[][];
