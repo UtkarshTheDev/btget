@@ -35,3 +35,63 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Torrent files
 *.torrent
+
+# ========================================
+# btget Test & Development Ignores
+# ========================================
+
+# Download directories and test outputs
+downloads/
+test_output/
+test_direct/
+tmp_*/
+tmp_rovodev_*
+
+# Test artifacts and temporary directories
+test/fixtures/torrents/
+test/output/
+test/temp/
+test/downloads/
+
+# Temporary test files
+test_*.torrent
+sample_*.torrent
+*.test.torrent
+
+# Performance test outputs
+benchmark_results/
+performance_logs/
+
+# Runtime generated files
+peer_data/
+session_data/
+cache/
+
+# Development databases and temporary files
+*.db
+*.sqlite
+*.sqlite3
+*.backup
+*.bak
+*.orig
+
+# Compressed files from tests
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Large test files (ISOs, images, etc.)
+*.iso
+*.bin
+*.img
+
+# Editor temporary files
+*.swp
+*.swo
+*~
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Icon?
