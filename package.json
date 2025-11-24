@@ -1,15 +1,29 @@
 {
-  "name": "bittorrent-client",
+  "name": "btget",
+  "version": "1.0.0",
+  "description": "A blazing-fast, modern BitTorrent client for the command line",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "btcli": "./dist/index.js",
-    "bittorrent-client": "./dist/index.js"
+    "btget": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md"
   ],
-  "type": "module",
+  "keywords": [
+    "bittorrent",
+    "torrent",
+    "cli",
+    "download",
+    "p2p",
+    "peer-to-peer",
+    "fast",
+    "typescript",
+    "bun"
+  ],
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "build": "bun run build.ts",
@@ -18,49 +32,52 @@
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
     "cli": "bun run build && bun run start",
+    "btget": "bun run build && node dist/index.js",
     "download": "bun run build && node dist/index.js download",
     "info": "bun run build && node dist/index.js info",
-    "torrent:download": "bun run build && node dist/index.js download",
-    "torrent:info": "bun run build && node dist/index.js info",
     "lint": "biome lint .",
     "format": "biome format .",
     "clean": "rm -rf dist",
     "rebuild": "bun run clean && bun run build",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
     "prepack": "bun run build",
     "prepublishOnly": "bun run build"
   },
-  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UtkarshTheDev/btget.git"
+  },
+  "bugs": {
+    "url": "https://github.com/UtkarshTheDev/btget/issues"
+  },
+  "homepage": "https://github.com/UtkarshTheDev/btget#readme",
+  "author": {
+    "name": "Utkarsh",
+    "email": "utkarshweb2023@gmail.com",
+    "url": "https://github.com/UtkarshTheDev"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "type": "module",
   "devDependencies": {
-    "@biomejs/biome": "2.3.7",
-    "@types/bun": "latest",
+    "@biomejs/biome": "1.8.3",
     "@types/cli-progress": "^3.11.6",
-    "@types/node": "^24.5.2",
-    "@types/yargs": "^17.0.35",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.1.6",
-    "ultracite": "5.3.8"
-  },
-  "peerDependencies": {
-    "typescript": "^5.9.2"
-  },
-  "lint-staged": {
-    "*.{js,jsx,ts,tsx,json,jsonc,css,scss,md,mdx}": [
-      "bun x ultracite fix"
-    ]
+    "@types/node": "^20.12.7",
+    "@types/yargs": "^17.0.33",
+    "bun-types": "latest",
+    "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@types/bencode": "^2.0.4",
-    "@types/bignum": "^0.0.33",
-    "bencode": "^4.0.0",
-    "bignum": "^0.13.1",
-    "buffer": "^6.0.3",
     "cli-progress": "^3.12.0",
-    "crypto": "^1.0.1",
-    "dgram": "^1.0.1",
-    "fs": "^0.0.1-security",
-    "yargs": "^18.0.0"
+    "yargs": "^17.7.2"
   },
-  "trustedDependencies": [
-    "bignum"
-  ]
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/UtkarshTheDev"
+  }
 }
