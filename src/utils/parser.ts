@@ -1,7 +1,7 @@
 import bencode from 'bencode';
 import crypto from 'crypto';
 import fs from 'fs';
-import type { Torrent, Info } from '../types/index.js';
+import type { Torrent, Info } from '../types/index';
 
 export function open(filepath: string): Torrent {
   console.log("Reading torrent file...");

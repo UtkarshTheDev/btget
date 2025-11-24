@@ -1,7 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { downloadTorrent } from "./utils/download.js";
-import { open, size } from "./utils/parser.js";
+import { downloadTorrent } from "./utils/download";
+import { open, size } from "./utils/parser";
 import * as path from "node:path"; // Import path module
 
 yargs(hideBin(process.argv))

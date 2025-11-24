@@ -2,10 +2,10 @@ import { Buffer } from "buffer";
 import crypto from "crypto";
 import dgram from "dgram";
 import bencode from "bencode";
-import type { Peer, Torrent } from "../types/index.js";
-import { genId } from "./genId.js";
-import group from "./group.js";
-import { infoHash, size } from "./parser.js";
+import type { Peer, Torrent } from "../types/index";
+import { genId } from "./genId";
+import group from "./group";
+import { infoHash, size } from "./parser";
 
 export function getPeers(torrent: Torrent, callback: (peers: Peer[]) => void) {
   console.log("getPeers called for torrent:", torrent.info.name.toString());

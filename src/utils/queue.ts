@@ -1,5 +1,5 @@
-import { BLOCK_LEN, blocksPerPiece, blockLen } from "./parser.js";
-import type { Torrent } from "../types/index.js";
+import { BLOCK_LEN, blocksPerPiece, blockLen } from "./parser";
+import type { Torrent } from "../types/index";
 
 export type PieceBlock = {
   index: number;

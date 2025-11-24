@@ -2,12 +2,12 @@ import { Socket } from "node:net";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import cliProgress from "cli-progress";
-import type { Peer, Torrent, File } from "../types/index.js";
-import { getPeers } from "./tracker.js";
-import { buildHandshake, buildInterested, buildRequest, parse, type ParsedMessage, type PiecePayload, type RequestPayload } from "./messages.js";
-import Queue from "./queue.js";
-import Pieces from "./pieces.js";
-import { size } from "./parser.js";
+import type { Peer, Torrent, File } from "../types/index";
+import { getPeers } from "./tracker";
+import { buildHandshake, buildInterested, buildRequest, parse, type ParsedMessage, type PiecePayload, type RequestPayload } from "./messages";
+import Queue from "./queue";
+import Pieces from "./pieces";
+import { size } from "./parser";
 
 
 interface FileEntry {
