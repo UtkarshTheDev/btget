@@ -66,6 +66,7 @@ src/utils/advancedQueue.ts
 test_*.torrent
 sample_*.torrent
 *.test.torrent
+*.torrent
 
 # ========================================
 # btget Test & Development Ignores
