@@ -4,11 +4,9 @@ import fs from "fs";
 import type { Torrent, Info } from "../types/index";
 
 export function open(filepath: string): Torrent {
-	console.log("Reading torrent file...");
 	const fileData = fs.readFileSync(filepath);
-	console.log("Decoding torrent file...");
+
 	const decodedData = bencode.decode(fileData);
-	console.log("Torrent file decoded.");
 
 	// Convert announce to string if it's a buffer or Uint8Array
 	if (decodedData.announce && typeof decodedData.announce !== "string") {
