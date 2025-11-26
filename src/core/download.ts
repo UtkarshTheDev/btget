@@ -36,11 +36,29 @@ interface ExtendedSocket extends Socket {
 	bitfield?: Buffer;
 	activeRequests?: Map<string, BlockRequest>; // Changed to BlockRequest with timestamp
 	endgameMode?: boolean; // Track if in endgame
+	availablePieces?: Set<number>; // Pieces this peer has (for rarest-first)
 }
 
 // Helper to create unique block identifier
 function blockId(block: { index: number; begin: number }): string {
 	return `${block.index}:${block.begin}`;
+}
+
+// Helper to parse bitfield into set of piece indices
+function parseBitfield(bitfield: Buffer, totalPieces: number): Set<number> {
+	const pieces = new Set<number>();
+	for (let i = 0; i < bitfield.length; i++) {
+		const byte = bitfield[i];
+		if (byte === undefined) continue; // Skip undefined bytes
+		for (let bit = 0; bit < 8; bit++) {
+			const pieceIndex = i * 8 + bit;
+			if (pieceIndex >= totalPieces) break; // Don't go past total pieces
+			if (byte & (1 << (7 - bit))) {
+				pieces.add(pieceIndex);
+			}
+		}
+	}
+	return pieces;
 }
 
 let torrentFiles: FileEntry[] = [];
@@ -370,6 +388,11 @@ export async function downloadTorrent(
 					connectedPeers = Math.max(0, connectedPeers - 1);
 				}
 
+				// Remove peer from queue tracking (rarest-first)
+				if (socket.peerId) {
+					queue.removePeer(socket.peerId);
+				}
+
 				// CRITICAL: Re-queue all pending requests from this disconnected peer
 				if (socket.activeRequests && socket.activeRequests.size > 0) {
 					socket.activeRequests.forEach((req) => {
@@ -457,12 +480,24 @@ export async function downloadTorrent(
 					break;
 
 				case 4: // have
-					// Peer has this piece - could update piece selector in future
+					// Peer has this piece - update for rarest-first
+					if (data.length >= 5) {
+						const pieceIndex = data.readUInt32BE(1);
+						if (!socket.availablePieces) socket.availablePieces = new Set();
+						socket.availablePieces.add(pieceIndex);
+						if (socket.peerId) {
+							queue.updatePeerPieces(socket.peerId, socket.availablePieces);
+						}
+					}
 					break;
 
 				case 5: // bitfield
 					socket.bitfield = data.slice(1);
-					// Will request pieces after unchoke
+					// Parse bitfield and update queue for rarest-first
+					socket.availablePieces = parseBitfield(socket.bitfield, totalPieces);
+					if (socket.peerId) {
+						queue.updatePeerPieces(socket.peerId, socket.availablePieces);
+					}
 					break;
 
 				case 7: // piece
@@ -559,7 +594,8 @@ export async function downloadTorrent(
 				(socket.pendingRequests ?? 0) < maxPipeline &&
 				queue.length() > 0
 			) {
-				const pieceBlock = queue.deque();
+				// Use rarest-first selection if peer pieces available
+				const pieceBlock = queue.deque(socket.availablePieces);
 				if (!pieceBlock) break;
 
 				if (pieces.needed(pieceBlock)) {
