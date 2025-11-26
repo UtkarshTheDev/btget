@@ -56,13 +56,11 @@ bun.lockb
 # Downloads directory
 Downloads/
 
-# Experimental/future features (not yet integrated)
-src/utils/advancedQueue.ts
+# Experimental/future features (keeping for future use)
+# Note: advancedQueue.ts kept for reference, dht.ts and peerManager.ts for Phase 4-5
 src/utils/dht.ts
 src/utils/peerManager.ts
-src/utils/pieceAssembler.ts
-src/utils/pieceSelector.ts
-src/utils/pieceVerifier.ts
+src/utils/advancedQueue.ts
 
 # Temporary files
 test_*.torrent

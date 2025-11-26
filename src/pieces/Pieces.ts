@@ -1,21 +1,25 @@
 import { BLOCK_LEN, blocksPerPiece } from "../protocol/parser";
 import type { Torrent } from "../types/index";
 import type { PieceBlock } from "../queue/Queue";
-import type { PiecePayload } from "../protocol/messages"; // Import PiecePayload
+import type { PiecePayload } from "../protocol/messages";
+import { PieceVerifier } from "./PieceVerifier";
 
 export default class Pieces {
 	_requested: boolean[][];
 	_received: boolean[][];
 	_torrent: Torrent;
+	private _verifier: PieceVerifier; // SHA-1 hash verifier
+	private _pieceBuffers: Map<number, Map<number, Buffer>>; // pieceIndex -> (blockOffset -> data)
 
 	constructor(torrent: Torrent) {
 		this._torrent = torrent;
-		const buildPiecesArray = (): boolean[][] => {
-			// Ensure torrent.info.pieces is a Buffer and has a length
-			const nPieces = torrent.info.pieces ? torrent.info.pieces.length / 20 : 0;
-			if (nPieces === 0) return []; // Return empty array if no pieces
+		this._verifier = new PieceVerifier(torrent);
+		this._pieceBuffers = new Map();
 
-			// Initialize with empty arrays to avoid undefined issues if piece index is out of bounds
+		const buildPiecesArray = (): boolean[][] => {
+			const nPieces = torrent.info.pieces ? torrent.info.pieces.length / 20 : 0;
+			if (nPieces === 0) return [];
+
 			const arr: boolean[][] = new Array(nPieces)
 				.fill(null)
 				.map((_, i) => new Array(blocksPerPiece(torrent, i)).fill(false));
@@ -27,13 +31,12 @@ export default class Pieces {
 	}
 
 	addRequested(pieceBlock: PieceBlock): void {
-		// Validate piece index first
 		if (
 			typeof pieceBlock.index !== "number" ||
 			pieceBlock.index < 0 ||
 			pieceBlock.index >= this._requested.length
 		) {
-			return; // Silently ignore invalid indices
+			return;
 		}
 
 		const blockIndex = Math.floor(pieceBlock.begin / BLOCK_LEN);
@@ -44,31 +47,47 @@ export default class Pieces {
 	}
 
 	addReceived(piecePayload: PiecePayload): void {
+		const { index, begin, block } = piecePayload;
+
 		// Validate piece index
-		if (piecePayload.index < 0 || piecePayload.index >= this._received.length) {
-			return; // Silently ignore invalid indices
+		if (index < 0 || index >= this._received.length) {
+			return;
 		}
 
-		const blockIndex = Math.floor(piecePayload.begin / BLOCK_LEN);
-		const piece = this._received[piecePayload.index];
+		// Store block data for verification
+		if (!this._pieceBuffers.has(index)) {
+			this._pieceBuffers.set(index, new Map());
+		}
+
+		const pieceBuffer = this._pieceBuffers.get(index)!;
+
+		// Duplicate block detection
+		if (pieceBuffer.has(begin)) {
+			return; // Already have this block, ignore duplicate
+		}
+
+		// Store block data
+		pieceBuffer.set(begin, block);
+
+		// Mark as received
+		const blockIndex = Math.floor(begin / BLOCK_LEN);
+		const piece = this._received[index];
 		if (piece && blockIndex >= 0 && blockIndex < piece.length) {
 			piece[blockIndex] = true;
 		}
 	}
 
 	needed(pieceBlock: PieceBlock): boolean {
-		// Validate piece index first
 		if (
 			typeof pieceBlock.index !== "number" ||
 			pieceBlock.index < 0 ||
 			pieceBlock.index >= this._requested.length
 		) {
-			return false; // Invalid piece index means not needed
+			return false;
 		}
 
 		const blockIndex = Math.floor(pieceBlock.begin / BLOCK_LEN);
 
-		// Check if this specific block is needed
 		const requestedPiece = this._requested[pieceBlock.index];
 		const receivedPiece = this._received[pieceBlock.index];
 		if (
@@ -77,28 +96,119 @@ export default class Pieces {
 			blockIndex >= 0 &&
 			blockIndex < requestedPiece.length
 		) {
-			// Block is needed if not yet received
 			return !receivedPiece[blockIndex];
 		}
 
-		return false; // Invalid block index means not needed
+		return false;
+	}
+
+	/**
+	 * Check if piece is complete and verify SHA-1 hash
+	 */
+	isPieceDone(pieceIndex: number): boolean {
+		if (pieceIndex < 0 || pieceIndex >= this._received.length) return false;
+
+		const piece = this._received[pieceIndex];
+		if (!piece || !piece.every((block) => block)) return false;
+
+		// Assemble piece from blocks
+		const pieceData = this.assemblePiece(pieceIndex);
+		if (!pieceData) return false;
+
+		// Verify SHA-1 hash
+		const isValid = this._verifier.verify(pieceIndex, pieceData);
+
+		if (!isValid) {
+			console.error(
+				`❌ Piece ${pieceIndex} failed hash verification - re-downloading`,
+			);
+			this.resetPiece(pieceIndex);
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Assemble piece from stored blocks
+	 */
+	private assemblePiece(pieceIndex: number): Buffer | null {
+		const pieceBuffer = this._pieceBuffers.get(pieceIndex);
+		if (!pieceBuffer) return null;
+
+		// Sort blocks by offset and concatenate
+		const offsets = Array.from(pieceBuffer.keys()).sort((a, b) => a - b);
+		const blocks = offsets.map((offset) => pieceBuffer.get(offset)!);
+
+		return Buffer.concat(blocks);
+	}
+
+	/**
+	 * Reset piece for re-download (after failed verification)
+	 */
+	private resetPiece(pieceIndex: number): void {
+		// Clear buffers
+		this._pieceBuffers.delete(pieceIndex);
+
+		// Reset tracking
+		if (this._received[pieceIndex]) {
+			this._received[pieceIndex].fill(false);
+		}
+		if (this._requested[pieceIndex]) {
+			this._requested[pieceIndex].fill(false);
+		}
+	}
+
+	/**
+	 * Get verified piece data
+	 */
+	getPieceData(pieceIndex: number): Buffer | null {
+		if (!this._verifier.isVerified(pieceIndex)) return null;
+		return this.assemblePiece(pieceIndex);
+	}
+
+	/**
+	 * Clear piece data after writing to disk (memory optimization)
+	 */
+	clearPieceData(pieceIndex: number): void {
+		this._pieceBuffers.delete(pieceIndex);
+	}
+
+	/**
+	 * Get number of verified pieces
+	 */
+	getVerifiedCount(): number {
+		return this._verifier.getVerifiedCount();
 	}
 
 	isDone(): boolean {
-		return this._received.every((blocks) => blocks.every((i) => i));
+		// Check if all blocks received
+		const allBlocksReceived = this._received.every((blocks) =>
+			blocks.every((i) => i),
+		);
+
+		if (!allBlocksReceived) return false;
+
+		// Verify any unverified pieces
+		for (let i = 0; i < this._received.length; i++) {
+			if (
+				!this._verifier.isVerified(i) &&
+				this._received[i].every((block) => block)
+			) {
+				// Verify this piece
+				this.isPieceDone(i);
+			}
+		}
+
+		// Now check if all pieces verified
+		return this._verifier.isComplete();
 	}
 
 	// Get completion percentage
 	getProgress(): number {
-		let totalBlocks = 0;
-		let receivedBlocks = 0;
-
-		for (const blocks of this._received) {
-			totalBlocks += blocks.length;
-			receivedBlocks += blocks.filter((b) => b).length;
-		}
-
-		return totalBlocks > 0 ? (receivedBlocks / totalBlocks) * 100 : 0;
+		const totalPieces = this._verifier.getTotalPieces();
+		const verifiedPieces = this._verifier.getVerifiedCount();
+		return totalPieces > 0 ? (verifiedPieces / totalPieces) * 100 : 0;
 	}
 
 	// Remove requested status (for timeout recovery)
