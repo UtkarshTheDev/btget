@@ -65,9 +65,9 @@ src/utils/pieceSelector.ts
 src/utils/pieceVerifier.ts
 
 # Temporary files
-rm
-BitTorrent_AI_Analysis_Prompt.md
-t
+test_*.torrent
+sample_*.torrent
+*.test.torrent
 
 # ========================================
 # btget Test & Development Ignores
