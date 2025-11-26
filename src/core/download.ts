@@ -112,6 +112,7 @@ export async function downloadTorrent(
 				clearInterval(progressInterval);
 				timeoutManager.clearAll();
 				progressTracker.stop();
+				peerManager.stop();
 
 				console.log("\n✅ Download completed successfully!");
 				fileWriter.cleanup().then(() => {

@@ -25,6 +25,7 @@ export class PeerManager {
 	private connectedPeers = 0;
 	private readonly MAX_CONNECTIONS = 50;
 	private totalPieces: number;
+	private connectionInterval: NodeJS.Timer;
 
 	constructor(
 		private torrent: Torrent,
@@ -36,7 +37,16 @@ export class PeerManager {
 		this.totalPieces = torrent.info.pieces.length / 20;
 
 		// Start connection manager loop
-		setInterval(() => this.manageConnections(), 1000);
+		this.connectionInterval = setInterval(() => this.manageConnections(), 1000);
+	}
+
+	/**
+	 * Stop peer manager
+	 */
+	stop(): void {
+		clearInterval(this.connectionInterval);
+		this.activeSockets.forEach((socket) => socket.destroy());
+		this.activeSockets.clear();
 	}
 
 	/**
