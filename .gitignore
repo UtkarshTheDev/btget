@@ -58,7 +58,7 @@ Downloads/
 
 # Experimental/future features (keeping for future use)
 # Note: advancedQueue.ts kept for reference, dht.ts and peerManager.ts for Phase 4-5
-src/utils/dht.ts
+# src/utils/dht.ts
 src/utils/peerManager.ts
 src/utils/advancedQueue.ts
 

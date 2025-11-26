@@ -10,6 +10,8 @@ import { MessageHandler } from "./handlers/MessageHandler";
 import { ProgressTracker } from "./modules/ProgressTracker";
 import { TimeoutManager } from "./modules/TimeoutManager";
 import { PeerManager } from "../peers/PeerManager";
+import { DistributedHashTable } from "../dht/DistributedHashTable";
+import { infoHash } from "../protocol/parser";
 
 /**
  * Download a torrent file
@@ -39,6 +41,7 @@ export async function downloadTorrent(
 	);
 	const progressTracker = new ProgressTracker();
 	const timeoutManager = new TimeoutManager();
+	const dht = new DistributedHashTable();
 
 	// Initialize files
 	await fileWriter.initialize(outputDirPath, torrentName);
@@ -113,6 +116,7 @@ export async function downloadTorrent(
 				timeoutManager.clearAll();
 				progressTracker.stop();
 				peerManager.stop();
+				dht.stop();
 
 				console.log("\n✅ Download completed successfully!");
 				fileWriter.cleanup().then(() => {
@@ -125,20 +129,29 @@ export async function downloadTorrent(
 		}, 1000);
 
 		// Start peer discovery
+		console.log("🔍 Searching for peers via Trackers and DHT...");
+
+		// Start DHT lookup
+		dht.on("peers", (peers: Array<{ ip: string; port: number }>) => {
+			peerManager.addPeers(peers);
+		});
+		dht.lookup(infoHash(torrent));
+
 		getPeers(torrent, (peers: Peer[]) => {
 			if (downloadComplete) return;
 
 			if (peers.length === 0) {
-				console.log("❌ No peers found");
-				reject(new Error("No peers found"));
-				return;
+				console.log("⚠️ No peers found from trackers, relying on DHT...");
+			} else {
+				// Initialize progress bar if not already started
+				// (might have been started by DHT peers)
+				if (!progressTracker["progressBar"]) {
+					progressTracker.initialize(torrentName, totalSize);
+				}
+
+				// Add peers to manager
+				peerManager.addPeers(peers);
 			}
-
-			// Initialize progress bar
-			progressTracker.initialize(torrentName, totalSize);
-
-			// Add peers to manager
-			peerManager.addPeers(peers);
 		});
 	});
 }
