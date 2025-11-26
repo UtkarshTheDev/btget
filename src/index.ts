@@ -1,8 +1,9 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import * as path from "node:path"; // Import path module
-import { open, size } from "./protocol/parser";
+import { open, size, infoHash } from "./protocol/parser";
 import { downloadTorrent } from "./core/download";
+import { startUI } from "./ui/render";
 
 // Handle both direct file download and command-based usage
 const argv = hideBin(process.argv);
@@ -47,27 +48,94 @@ if (isDirectDownload) {
 				process.exit(1);
 			}
 
+			let uiControls: any = null;
+
 			try {
 				const torrentFilePath = argv._[0] as string;
 				const outputDirPath = path.resolve(argv.output as string);
-
-				// Debug args
-				console.log("Parsed args:", argv);
-
 				const dhtOnly = argv.dhtOnly || argv["dht-only"];
-				console.log("dhtOnly variable:", dhtOnly);
 
-				console.log(`Processing torrent file: ${torrentFilePath}`);
+				// Initial setup without UI to read torrent info
 				const torrent = open(torrentFilePath);
 				const torrentName = torrent.info.name.toString("utf8");
+				const totalSize = size(torrent);
+				const formattedSize =
+					(Number(totalSize) / (1024 * 1024)).toFixed(2) + " MB";
+				const hash = infoHash(torrent).toString("hex").substring(0, 8) + "...";
 
-				console.log(`Torrent loaded: ${torrentName}`);
-				console.log(`Files will be saved to: ${outputDirPath}`);
-				if (dhtOnly) console.log("📡 Mode: DHT Only (Trackers disabled)");
+				// Start UI
+				uiControls = startUI({
+					filename: torrentName,
+					size: formattedSize,
+					hash: hash,
+					progress: 0,
+					speed: 0,
+					eta: "--",
+					peers: 0,
+					seeds: 0,
+					leechers: 0,
+					status: "Initializing...",
+					speedHistory: Array(30).fill(0),
+				});
 
-				await downloadTorrent(torrent, outputDirPath, { dhtOnly });
-				console.log(`✅ Download completed successfully for '${torrentName}'!`);
+				// Suppress console logs during UI execution
+				const originalLog = console.log;
+				const originalError = console.error;
+				console.log = () => {};
+				console.error = () => {};
+
+				let currentSpeedHistory = Array(30).fill(0);
+
+				await downloadTorrent(torrent, outputDirPath, {
+					dhtOnly,
+					onProgress: (data) => {
+						// Calculate ETA
+						const remaining = Number(totalSize) - data.downloaded;
+						const speedBytes = data.speed * 1024;
+						let eta = "--";
+						if (speedBytes > 0) {
+							const seconds = remaining / speedBytes;
+							const mins = Math.floor(seconds / 60);
+							const secs = Math.floor(seconds % 60);
+							eta = `${mins}m ${secs}s`;
+						}
+
+						// Update speed history
+						currentSpeedHistory = [...currentSpeedHistory.slice(1), data.speed];
+
+						uiControls.updateUI({
+							progress: (data.downloaded / Number(totalSize)) * 100,
+							speed: data.speed, // KB/s
+							peers: data.peers,
+							seeds: data.seeds || 0,
+							leechers: data.leechers || 0,
+							eta: eta,
+							status:
+								data.downloaded > 0 ? "Downloading..." : "Finding Peers...",
+							speedHistory: currentSpeedHistory,
+						});
+					},
+				});
+
+				// Restore console
+				console.log = originalLog;
+				console.error = originalError;
+
+				uiControls.updateUI({
+					status: "Completed",
+					progress: 100,
+					eta: "0m 0s",
+				});
+
+				// Auto-exit after 3 seconds
+				setTimeout(() => {
+					if (uiControls) uiControls.stopUI();
+					process.exit(0);
+				}, 3000);
 			} catch (error: any) {
+				if (uiControls) {
+					uiControls.stopUI();
+				}
 				console.error("Error:", error.message);
 				process.exit(1);
 			}
@@ -98,27 +166,98 @@ if (isDirectDownload) {
 					});
 			},
 			async (argv) => {
+				let uiControls: any = null;
+
 				try {
 					const torrentFilePath = argv["torrent-file"] as string;
 					const outputDirPath = path.resolve(argv.output as string); // Resolve to absolute path
 					const dhtOnly = argv.dhtOnly || argv["dht-only"];
-					console.log("Running DIRECT DOWNLOAD mode");
-					console.log("dhtOnly variable:", dhtOnly, "Type:", typeof dhtOnly);
 
-					console.log(`Processing torrent file: ${torrentFilePath}`);
+					// Initial setup without UI to read torrent info
 					const torrent = open(torrentFilePath);
 					const torrentName = torrent.info.name.toString("utf8");
+					const totalSize = size(torrent);
+					const formattedSize =
+						(Number(totalSize) / (1024 * 1024)).toFixed(2) + " MB";
+					const hash =
+						infoHash(torrent).toString("hex").substring(0, 8) + "...";
 
-					console.log(`Torrent loaded: ${torrentName}`);
-					console.log(`Files will be saved to: ${outputDirPath}`);
-					if (dhtOnly) console.log("📡 Mode: DHT Only (Trackers disabled)");
+					// Start UI
+					uiControls = startUI({
+						filename: torrentName,
+						size: formattedSize,
+						hash: hash,
+						progress: 0,
+						speed: 0,
+						eta: "--",
+						peers: 0,
+						seeds: 0,
+						leechers: 0,
+						status: "Initializing...",
+						speedHistory: Array(30).fill(0),
+					});
 
-					console.log("Calling downloadTorrent with options:", { dhtOnly });
-					await downloadTorrent(torrent, outputDirPath, { dhtOnly });
-					console.log(
-						`✅ Download completed successfully for '${torrentName}'!`,
-					);
+					// Suppress console logs during UI execution
+					const originalLog = console.log;
+					const originalError = console.error;
+					console.log = () => {};
+					console.error = () => {};
+
+					let currentSpeedHistory = Array(30).fill(0);
+
+					await downloadTorrent(torrent, outputDirPath, {
+						dhtOnly,
+						onProgress: (data) => {
+							// Calculate ETA
+							const remaining = Number(totalSize) - data.downloaded;
+							const speedBytes = data.speed * 1024;
+							let eta = "--";
+							if (speedBytes > 0) {
+								const seconds = remaining / speedBytes;
+								const mins = Math.floor(seconds / 60);
+								const secs = Math.floor(seconds % 60);
+								eta = `${mins}m ${secs}s`;
+							}
+
+							// Update speed history
+							currentSpeedHistory = [
+								...currentSpeedHistory.slice(1),
+								data.speed,
+							];
+
+							uiControls.updateUI({
+								progress: (data.downloaded / Number(totalSize)) * 100,
+								speed: data.speed, // KB/s
+								peers: data.peers,
+								seeds: data.seeds || 0,
+								leechers: data.leechers || 0,
+								eta: eta,
+								status:
+									data.downloaded > 0 ? "Downloading..." : "Finding Peers...",
+								speedHistory: currentSpeedHistory,
+							});
+						},
+					});
+
+					// Restore console
+					console.log = originalLog;
+					console.error = originalError;
+
+					uiControls.updateUI({
+						status: "Completed",
+						progress: 100,
+						eta: "0m 0s",
+					});
+
+					// Auto-exit after 3 seconds
+					setTimeout(() => {
+						if (uiControls) uiControls.stopUI();
+						process.exit(0);
+					}, 3000);
 				} catch (error: any) {
+					if (uiControls) {
+						uiControls.stopUI();
+					}
 					console.error("Error:", error.message);
 					process.exit(1);
 				}
