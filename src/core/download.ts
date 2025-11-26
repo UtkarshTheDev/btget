@@ -9,7 +9,7 @@ import { EndgameManager } from "./modules/EndgameManager";
 import { MessageHandler } from "./handlers/MessageHandler";
 import { ProgressTracker } from "./modules/ProgressTracker";
 import { TimeoutManager } from "./modules/TimeoutManager";
-import { PeerConnection } from "./handlers/PeerConnection";
+import { PeerManager } from "../peers/PeerManager";
 
 /**
  * Download a torrent file
@@ -55,8 +55,8 @@ export async function downloadTorrent(
 			queue.queue(i);
 		}
 
-		// Initialize peer connection manager
-		const peerConnection = new PeerConnection(
+		// Initialize peer manager
+		const peerManager = new PeerManager(
 			torrent,
 			pieces,
 			queue,
@@ -66,10 +66,10 @@ export async function downloadTorrent(
 
 		// Start timeout management
 		timeoutManager.startBlockTimeoutCheck(
-			() => peerConnection.getActiveSockets(),
+			() => peerManager.getActiveSockets(),
 			pieces,
 			queue,
-			(socket) => peerConnection.requestPieces(socket),
+			(socket) => peerManager.requestPieces(socket),
 		);
 
 		timeoutManager.startDownloadTimeout(15 * 60 * 1000, () => {
@@ -95,7 +95,7 @@ export async function downloadTorrent(
 			}
 
 			const downloaded = messageHandler.getTotalDownloaded();
-			const connectedPeers = peerConnection.getConnectedPeers();
+			const connectedPeers = peerManager.getConnectedPeers();
 			const progress = (downloaded / Number(totalSize)) * 100;
 
 			// Update progress
@@ -103,7 +103,7 @@ export async function downloadTorrent(
 
 			// Check for endgame mode
 			if (endgameManager.shouldEnterEndgame(progress, queue.length())) {
-				endgameManager.enterEndgame(peerConnection.getActiveSockets());
+				endgameManager.enterEndgame(peerManager.getActiveSockets());
 			}
 
 			// Check for completion
@@ -136,15 +136,8 @@ export async function downloadTorrent(
 			// Initialize progress bar
 			progressTracker.initialize(torrentName, totalSize);
 
-			// Connect to peers
-			const maxPeers = Math.min(20, peers.length);
-			peers.slice(0, maxPeers).forEach((peer, index) => {
-				setTimeout(() => {
-					if (!downloadComplete && peerConnection.getConnectedPeers() < 15) {
-						peerConnection.connectToPeer(peer);
-					}
-				}, index * 50);
-			});
+			// Add peers to manager
+			peerManager.addPeers(peers);
 		});
 	});
 }

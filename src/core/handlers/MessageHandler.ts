@@ -163,6 +163,19 @@ export class MessageHandler {
 
 		// Update download counter
 		this.totalDownloaded += block.length;
+
+		// Update peer stats
+		socket.downloaded = (socket.downloaded ?? 0) + block.length;
+		const now = Date.now();
+		const duration = (now - (socket.lastMeasureTime ?? now)) / 1000;
+		if (duration > 0) {
+			// Simple speed calculation (bytes/sec) - exponential moving average could be better but this is simple
+			const currentSpeed = block.length / duration;
+			socket.speed = currentSpeed; // For now just instantaneous speed of this block
+			socket.lastMeasureTime = now;
+		} else {
+			socket.lastMeasureTime = now;
+		}
 	}
 
 	/**

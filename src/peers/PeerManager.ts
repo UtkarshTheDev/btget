@@ -1,23 +1,29 @@
 import { Socket } from "net";
-import type { Peer, Torrent } from "../../types/index";
-import type { PieceBlock } from "../../queue/Queue";
-import type Pieces from "../../pieces/Pieces";
-import type Queue from "../../queue/Queue";
+import type { Peer, Torrent } from "../types/index";
+import type { PieceBlock } from "../queue/Queue";
+import type Pieces from "../pieces/Pieces";
+import type Queue from "../queue/Queue";
 import {
 	buildHandshake,
 	buildInterested,
 	buildRequest,
-} from "../../protocol/messages";
-import { MessageHandler } from "./MessageHandler";
-import { EndgameManager, type ExtendedSocket } from "../modules/EndgameManager";
+} from "../protocol/messages";
+import { MessageHandler } from "../core/handlers/MessageHandler";
+import {
+	EndgameManager,
+	type ExtendedSocket,
+} from "../core/modules/EndgameManager";
 
 /**
- * PeerConnection manages peer connections and requests
+ * PeerManager handles peer connections, pooling, and lifecycle
  */
-export class PeerConnection {
+export class PeerManager {
 	private activeSockets = new Map<string, ExtendedSocket>();
+	private knownPeers = new Set<string>(); // "ip:port"
+	private peerQueue: Peer[] = [];
 	private activePeers = 0;
 	private connectedPeers = 0;
+	private readonly MAX_CONNECTIONS = 50;
 	private totalPieces: number;
 
 	constructor(
@@ -28,12 +34,44 @@ export class PeerConnection {
 		private endgameManager: EndgameManager,
 	) {
 		this.totalPieces = torrent.info.pieces.length / 20;
+
+		// Start connection manager loop
+		setInterval(() => this.manageConnections(), 1000);
+	}
+
+	/**
+	 * Add new peers to the pool
+	 */
+	addPeers(peers: Peer[]): void {
+		peers.forEach((peer) => {
+			const peerId = `${peer.ip}:${peer.port}`;
+			if (!this.knownPeers.has(peerId)) {
+				this.knownPeers.add(peerId);
+				this.peerQueue.push(peer);
+			}
+		});
+		this.manageConnections();
+	}
+
+	/**
+	 * Manage peer connections (auto-connect if slots available)
+	 */
+	private manageConnections(): void {
+		while (
+			this.activePeers < this.MAX_CONNECTIONS &&
+			this.peerQueue.length > 0
+		) {
+			const peer = this.peerQueue.shift();
+			if (peer) {
+				this.connectToPeer(peer);
+			}
+		}
 	}
 
 	/**
 	 * Connect to a peer
 	 */
-	connectToPeer(peer: Peer): void {
+	private connectToPeer(peer: Peer): void {
 		const socket = new Socket() as ExtendedSocket;
 		const peerId = `${peer.ip}:${peer.port}`;
 
@@ -116,10 +154,12 @@ export class PeerConnection {
 
 		// Close event
 		socket.on("close", () => {
-			this.activeSockets.delete(peerId);
-			this.activePeers = Math.max(0, this.activePeers - 1);
-			if (handshakeComplete) {
-				this.connectedPeers = Math.max(0, this.connectedPeers - 1);
+			if (this.activeSockets.has(peerId)) {
+				this.activeSockets.delete(peerId);
+				this.activePeers = Math.max(0, this.activePeers - 1);
+				if (handshakeComplete) {
+					this.connectedPeers = Math.max(0, this.connectedPeers - 1);
+				}
 			}
 
 			// Remove peer from queue tracking
@@ -203,5 +243,18 @@ export class PeerConnection {
 	 */
 	getActivePeers(): number {
 		return this.activePeers;
+	}
+
+	/**
+	 * Get total download speed (bytes/sec)
+	 */
+	getDownloadSpeed(): number {
+		let totalSpeed = 0;
+		this.activeSockets.forEach((socket) => {
+			if (socket.speed) {
+				totalSpeed += socket.speed;
+			}
+		});
+		return totalSpeed;
 	}
 }

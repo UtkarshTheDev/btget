@@ -17,6 +17,10 @@ export interface ExtendedSocket extends Socket {
 	activeRequests?: Map<string, BlockRequest>;
 	endgameMode?: boolean;
 	availablePieces?: Set<number>;
+	// Speed tracking
+	downloaded?: number;
+	speed?: number;
+	lastMeasureTime?: number;
 }
 
 /**
