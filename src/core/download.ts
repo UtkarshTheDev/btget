@@ -3,17 +3,17 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import cliProgress from "cli-progress";
 import type { Peer, Torrent, File } from "../types/index";
-import { getPeers } from "./tracker";
+import { getPeers } from "../tracker/tracker";
 import {
 	buildHandshake,
 	buildInterested,
 	buildRequest,
 	buildCancel,
-} from "./messages";
-import type { PieceBlock } from "./queue";
-import Queue from "./queue";
-import Pieces from "./pieces";
-import { size } from "./parser";
+} from "../protocol/messages";
+import type { PieceBlock } from "../queue/Queue";
+import Queue from "../queue/Queue";
+import Pieces from "../pieces/Pieces";
+import { size } from "../protocol/parser";
 
 interface FileEntry {
 	handle: fs.FileHandle;

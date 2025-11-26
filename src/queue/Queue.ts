@@ -1,4 +1,4 @@
-import { BLOCK_LEN, blocksPerPiece, blockLen } from "./parser";
+import { BLOCK_LEN, blocksPerPiece, blockLen } from "../protocol/parser";
 import type { Torrent } from "../types/index";
 
 export type PieceBlock = {

@@ -1,8 +1,8 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { downloadTorrent } from "./utils/download";
-import { open, size } from "./utils/parser";
 import * as path from "node:path"; // Import path module
+import { open, size } from "./protocol/parser";
+import { downloadTorrent } from "./core/download";
 
 // Handle both direct file download and command-based usage
 const argv = hideBin(process.argv);

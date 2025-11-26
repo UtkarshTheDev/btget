@@ -1,7 +1,8 @@
-import { Buffer } from "node:buffer";
+import bencode from "bencode";
+import crypto from "crypto";
 import type { Torrent } from "../types/index";
-import { genId } from "./genId";
 import { infoHash } from "./parser";
+import { genId } from "../utils/genId";
 
 export function buildHandshake(torrent: Torrent): Buffer {
 	const buf = Buffer.alloc(68);
