@@ -80,21 +80,40 @@ export async function downloadTorrent(
 			(socket) => peerManager.requestPieces(socket),
 		);
 
-		timeoutManager.startDownloadTimeout(15 * 60 * 1000, () => {
-			if (!downloadComplete) {
-				downloadComplete = true;
-				progressTracker.stop();
-				const progress =
-					(messageHandler.getTotalDownloaded() / Number(totalSize)) * 100;
-				if (!options.onProgress)
-					console.log(`\n❌ Download timeout at ${progress.toFixed(1)}%`);
-				fileWriter
-					.cleanup()
-					.then(() =>
-						reject(new Error(`Download timeout at ${progress.toFixed(1)}%`)),
-					);
-			}
-		});
+		// Configure progress-based timeout (replaces fixed 15-minute timeout)
+		const fileSizeMB = Number(totalSize) / (1024 * 1024);
+		const timeoutConfig = {
+			stallTimeMs: 5 * 60 * 1000, // 5 minutes with no progress = stall
+			minSpeedBytesPerSec: 1024, // 1 KB/s minimum speed
+			minSpeedDurationMs: 10 * 60 * 1000, // 10 minutes below minimum speed
+			maxTotalTimeMs: Math.max(
+				24 * 60 * 60 * 1000, // 24 hours absolute maximum
+				fileSizeMB * 60 * 1000, // Or 1 minute per MB, whichever is larger
+			),
+		};
+
+		timeoutManager.startProgressBasedTimeout(
+			() => ({
+				downloaded: messageHandler.getTotalDownloaded(),
+				speed: peerManager.getDownloadSpeed(),
+			}),
+			() => {
+				if (!downloadComplete) {
+					downloadComplete = true;
+					progressTracker.stop();
+					const progress =
+						(messageHandler.getTotalDownloaded() / Number(totalSize)) * 100;
+					if (!options.onProgress)
+						console.log(`\n❌ Download stalled at ${progress.toFixed(1)}%`);
+					fileWriter
+						.cleanup()
+						.then(() =>
+							reject(new Error(`Download stalled at ${progress.toFixed(1)}%`)),
+						);
+				}
+			},
+			timeoutConfig,
+		);
 
 		// Progress monitoring
 		const progressInterval = setInterval(() => {

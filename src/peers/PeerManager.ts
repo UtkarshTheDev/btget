@@ -7,6 +7,7 @@ import {
 	buildHandshake,
 	buildInterested,
 	buildRequest,
+	buildKeepAlive,
 } from "../protocol/messages";
 import { MessageHandler } from "../core/handlers/MessageHandler";
 import {
@@ -26,6 +27,8 @@ export class PeerManager {
 	private readonly MAX_CONNECTIONS = 50;
 	private totalPieces: number;
 	private connectionInterval: NodeJS.Timer;
+	private keepAliveInterval: NodeJS.Timer;
+	private healthCheckInterval: NodeJS.Timer;
 
 	constructor(
 		private torrent: Torrent,
@@ -38,6 +41,15 @@ export class PeerManager {
 
 		// Start connection manager loop
 		this.connectionInterval = setInterval(() => this.manageConnections(), 1000);
+
+		// Start keep-alive sender (every 90 seconds)
+		this.keepAliveInterval = setInterval(() => this.sendKeepAlives(), 90000);
+
+		// Start peer health monitoring (every 30 seconds)
+		this.healthCheckInterval = setInterval(
+			() => this.monitorPeerHealth(),
+			30000,
+		);
 	}
 
 	/**
@@ -45,6 +57,8 @@ export class PeerManager {
 	 */
 	stop(): void {
 		clearInterval(this.connectionInterval);
+		clearInterval(this.keepAliveInterval);
+		clearInterval(this.healthCheckInterval);
 		this.activeSockets.forEach((socket) => socket.destroy());
 		this.activeSockets.clear();
 	}
@@ -94,7 +108,7 @@ export class PeerManager {
 		// Configure socket
 		socket.setKeepAlive(true, 30000);
 		socket.setNoDelay(true);
-		socket.setTimeout(30000);
+		socket.setTimeout(120000); // Increased from 30s to 120s for large files
 
 		let handshakeComplete = false;
 		let messageBuffer = Buffer.alloc(0);
@@ -266,5 +280,47 @@ export class PeerManager {
 			}
 		});
 		return totalSpeed;
+	}
+
+	/**
+	 * Send keep-alive messages to all active peers
+	 * Prevents connections from timing out during slow downloads
+	 */
+	private sendKeepAlives(): void {
+		const keepAliveMsg = buildKeepAlive();
+		this.activeSockets.forEach((socket) => {
+			if (!socket.destroyed && socket.writable) {
+				try {
+					socket.write(keepAliveMsg);
+				} catch (error) {
+					// Silently ignore write errors
+				}
+			}
+		});
+	}
+
+	/**
+	 * Monitor peer health and identify stalled connections
+	 * Peers with no data for 2 minutes are considered stalled
+	 */
+	private monitorPeerHealth(): void {
+		const now = Date.now();
+		const STALL_THRESHOLD = 120000; // 2 minutes
+
+		this.activeSockets.forEach((socket, peerId) => {
+			if (socket.destroyed) return;
+
+			const timeSinceData = now - (socket.lastData ?? now);
+
+			// If peer hasn't sent data in 2 minutes and has pending requests, it's stalled
+			if (
+				timeSinceData > STALL_THRESHOLD &&
+				socket.activeRequests &&
+				socket.activeRequests.size > 0
+			) {
+				// Peer is stalled - destroy connection to free up slot
+				socket.destroy();
+			}
+		});
 	}
 }
