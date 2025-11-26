@@ -1,7 +1,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
-import type { Torrent, File } from "../types/index";
-import { size } from "../protocol/parser";
+import type { Torrent, File } from "../../types/index";
+import { size } from "../../protocol/parser";
 
 interface FileEntry {
 	handle: fs.FileHandle;

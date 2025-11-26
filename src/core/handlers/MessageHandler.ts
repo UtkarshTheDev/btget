@@ -1,14 +1,8 @@
-import type { Socket } from "net";
-import type { PieceBlock } from "../queue/Queue";
-import type Pieces from "../pieces/Pieces";
-import type Queue from "../queue/Queue";
-import type { Torrent } from "../types/index";
-import { FileWriter } from "./FileWriter";
-import {
-	EndgameManager,
-	type ExtendedSocket,
-	type BlockRequest,
-} from "./EndgameManager";
+import type Pieces from "../../pieces/Pieces";
+import type Queue from "../../queue/Queue";
+import type { Torrent } from "../../types/index";
+import { FileWriter } from "../modules/FileWriter";
+import { EndgameManager, type ExtendedSocket } from "../modules/EndgameManager";
 
 // Helper to create unique block identifier
 function blockId(block: { index: number; begin: number }): string {
@@ -57,6 +51,7 @@ export class MessageHandler {
 			}
 
 			const messageId = buffer[offset + 4];
+			if (messageId === undefined) break; // Safety check
 			const messageData = buffer.slice(offset + 4, offset + 4 + messageLength);
 
 			try {
@@ -119,7 +114,7 @@ export class MessageHandler {
 				break;
 
 			case 7: // piece
-				this.handlePiece(socket, data, pieces, queue, allSockets);
+				this.handlePiece(socket, data, pieces, allSockets);
 				break;
 		}
 	}
@@ -131,7 +126,6 @@ export class MessageHandler {
 		socket: ExtendedSocket,
 		data: Buffer,
 		pieces: Pieces,
-		queue: Queue,
 		allSockets: Map<string, ExtendedSocket>,
 	): Promise<void> {
 		const pieceIndex = data.readUInt32BE(1);
@@ -157,7 +151,12 @@ export class MessageHandler {
 		}
 
 		// Add to pieces
-		pieces.addReceived({ index: pieceIndex, begin, block });
+		pieces.addReceived({
+			index: pieceIndex,
+			begin,
+			block,
+			length: block.length,
+		});
 
 		// Write to disk
 		await this.fileWriter.writeBlock(pieceIndex, begin, block);

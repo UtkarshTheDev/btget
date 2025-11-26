@@ -1,5 +1,3 @@
-import bencode from "bencode";
-import crypto from "crypto";
 import type { Torrent } from "../types/index";
 import { infoHash } from "./parser";
 import { genId } from "../utils/genId";

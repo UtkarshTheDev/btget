@@ -1,16 +1,15 @@
 import * as fs from "fs/promises";
 import type { Peer, Torrent } from "../types/index";
 import { getPeers } from "../tracker/tracker";
-import type { PieceBlock } from "../queue/Queue";
 import Queue from "../queue/Queue";
 import Pieces from "../pieces/Pieces";
 import { size } from "../protocol/parser";
-import { FileWriter } from "./FileWriter";
-import { EndgameManager } from "./EndgameManager";
-import { MessageHandler } from "./MessageHandler";
-import { ProgressTracker } from "./ProgressTracker";
-import { TimeoutManager } from "./TimeoutManager";
-import { PeerConnection } from "./PeerConnection";
+import { FileWriter } from "./modules/FileWriter";
+import { EndgameManager } from "./modules/EndgameManager";
+import { MessageHandler } from "./handlers/MessageHandler";
+import { ProgressTracker } from "./modules/ProgressTracker";
+import { TimeoutManager } from "./modules/TimeoutManager";
+import { PeerConnection } from "./handlers/PeerConnection";
 
 /**
  * Download a torrent file
@@ -100,7 +99,7 @@ export async function downloadTorrent(
 			const progress = (downloaded / Number(totalSize)) * 100;
 
 			// Update progress
-			progressTracker.update(downloaded, totalSize, connectedPeers);
+			progressTracker.update(downloaded, connectedPeers);
 
 			// Check for endgame mode
 			if (endgameManager.shouldEnterEndgame(progress, queue.length())) {

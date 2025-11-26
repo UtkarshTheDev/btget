@@ -1,15 +1,15 @@
 import { Socket } from "net";
-import type { Peer, Torrent } from "../types/index";
-import type { PieceBlock } from "../queue/Queue";
-import type Pieces from "../pieces/Pieces";
-import type Queue from "../queue/Queue";
+import type { Peer, Torrent } from "../../types/index";
+import type { PieceBlock } from "../../queue/Queue";
+import type Pieces from "../../pieces/Pieces";
+import type Queue from "../../queue/Queue";
 import {
 	buildHandshake,
 	buildInterested,
 	buildRequest,
-} from "../protocol/messages";
+} from "../../protocol/messages";
 import { MessageHandler } from "./MessageHandler";
-import { EndgameManager, type ExtendedSocket } from "./EndgameManager";
+import { EndgameManager, type ExtendedSocket } from "../modules/EndgameManager";
 
 /**
  * PeerConnection manages peer connections and requests

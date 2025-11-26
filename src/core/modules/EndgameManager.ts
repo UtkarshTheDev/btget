@@ -1,8 +1,6 @@
 import type { Socket } from "net";
-import type { PieceBlock } from "../queue/Queue";
-import type Pieces from "../pieces/Pieces";
-import type Queue from "../queue/Queue";
-import { buildCancel } from "../protocol/messages";
+import type { PieceBlock } from "../../queue/Queue";
+import { buildCancel } from "../../protocol/messages";
 
 // Track block requests with timestamps for timeout detection
 export interface BlockRequest {
@@ -47,7 +45,7 @@ export class EndgameManager {
 		if (this.inEndgame) return;
 
 		this.inEndgame = true;
-		console.log("🏁 Entering endgame mode");
+		this.inEndgame = true;
 
 		// Mark all sockets as in endgame
 		sockets.forEach((socket) => {

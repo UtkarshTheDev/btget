@@ -1,6 +1,6 @@
-import type { PieceBlock } from "../queue/Queue";
-import type Pieces from "../pieces/Pieces";
-import type Queue from "../queue/Queue";
+import type { PieceBlock } from "../../queue/Queue";
+import type Pieces from "../../pieces/Pieces";
+import type Queue from "../../queue/Queue";
 import type { ExtendedSocket } from "./EndgameManager";
 
 /**
@@ -29,7 +29,7 @@ export class TimeoutManager {
 
 				const timedOut: PieceBlock[] = [];
 
-				socket.activeRequests.forEach((req, key) => {
+				socket.activeRequests.forEach((req) => {
 					if (now - req.requestedAt > this.BLOCK_TIMEOUT_MS) {
 						timedOut.push(req.block);
 					}

@@ -55,11 +55,11 @@ export default class Pieces {
 		}
 
 		// Store block data for verification
-		if (!this._pieceBuffers.has(index)) {
-			this._pieceBuffers.set(index, new Map());
+		let pieceBuffer = this._pieceBuffers.get(index);
+		if (!pieceBuffer) {
+			pieceBuffer = new Map();
+			this._pieceBuffers.set(index, pieceBuffer);
 		}
-
-		const pieceBuffer = this._pieceBuffers.get(index)!;
 
 		// Duplicate block detection
 		if (pieceBuffer.has(begin)) {

@@ -14,7 +14,7 @@ export class ProgressTracker {
 	initialize(torrentName: string, totalSize: bigint): void {
 		this.progressBar = new cliProgress.SingleBar(
 			{
-				format: `${torrentName} | {bar} | {percentage}% | {speed} KB/s | Peers: {peers} | {value_formatted}/{total_formatted}`,
+				format: `${torrentName} | {bar} | {percentage}% | {speed} KB/s | Peers: {peers} | {value}/{total}`,
 				barCompleteChar: "\u2588",
 				barIncompleteChar: "\u2591",
 				hideCursor: true,
@@ -38,7 +38,7 @@ export class ProgressTracker {
 	/**
 	 * Update progress bar
 	 */
-	update(downloaded: number, totalSize: bigint, connectedPeers: number): void {
+	update(downloaded: number, connectedPeers: number): void {
 		if (!this.progressBar) return;
 
 		const speed = (downloaded - this.lastProgress) / 1024; // KB/s
