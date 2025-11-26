@@ -25,6 +25,9 @@
 ## 🌟 Features
 
 - ⚡ **High Performance**: Built on Bun for a fast startup and optimized runtime performance.
+- 🌐 **DHT Support**: Tracker-less peer discovery using the Distributed Hash Table (BEP 0005).
+- 🧠 **Smart Peer Management**: Intelligent connection pooling and download speed tracking.
+- 🛡️ **Resilient Downloads**: End-to-end data integrity verification with SHA-1 hashing.
 - 📊 **Real-Time Progress**: A clean interface showing download speed, peer count, and progress bars.
 - 🎯 **Multi-Tracker Support**: Connects to multiple trackers to ensure reliable peer discovery.
 - 📁 **Multi-File Torrents**: Seamlessly handles torrents containing multiple files and complex directory structures.
@@ -103,6 +106,7 @@ btget download <torrent-file> [options]
 
 # Options
   -o, --output <directory>    Output directory (default: current directory)
+  --dht-only                  Use only DHT for peer discovery (disable trackers)
   -h, --help                  Show help
 ```
 
@@ -114,6 +118,9 @@ btget movie.torrent
 
 # Download to a specific directory
 btget ubuntu.torrent -o ~/Downloads
+
+# Download using only DHT (useful for testing or privacy)
+btget ubuntu.torrent --dht-only
 ```
 
 ### Info Command
@@ -185,12 +192,18 @@ bun run rebuild       # Clean and rebuild
 ```
 src/
 ├── index.ts              # Main CLI entry point
+├── core/                 # Core logic modules
+│   ├── download.ts       # Download orchestrator
+│   ├── handlers/         # Protocol handlers
+│   └── modules/          # Feature modules (FileWriter, Progress, etc.)
+├── dht/                  # Distributed Hash Table (DHT)
+├── peers/                # Peer connection management
+├── pieces/               # Piece handling and verification
+├── protocol/             # BitTorrent protocol parsing
+├── queue/                # Piece request queuing
+├── tracker/              # Tracker communication
 ├── types/                # TypeScript type definitions
-│   └── index.d.ts
-└── utils/                # Core utilities
-    ├── download.ts       # Download management
-    ├── tracker.ts        # Tracker communication
-    └── parser.ts         # Torrent file parsing
+└── utils/                # General utilities
 ```
 
 ## 🧪 Testing
@@ -205,11 +218,11 @@ This will execute all unit and integration tests located in the `test/` director
 
 ## 📋 Roadmap
 
-- [ ] **Resume Downloads**: Continue interrupted downloads.
+- [x] **Resume Downloads**: Continue interrupted downloads (Auto-resume supported).
 - [ ] **Seeding Support**: Share completed downloads.
 - [ ] **Bandwidth Limiting**: Control upload/download speeds.
 - [ ] **Magnet Link Support**: Download directly from magnet links.
-- [ ] **DHT Support**: Peer discovery via Distributed Hash Table.
+- [x] **DHT Support**: Peer discovery via Distributed Hash Table.
 - [ ] **Protocol Encryption**: Encrypt peer communication for privacy.
 - [ ] **JSON Configuration**: Support for configuring BitTorrent connections and other settings via a JSON file.
 

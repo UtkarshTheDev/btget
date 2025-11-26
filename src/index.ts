@@ -29,6 +29,11 @@ if (isDirectDownload) {
 			type: "string",
 			default: ".",
 		})
+		.option("dht-only", {
+			describe: "Use only DHT for peer discovery (disable trackers)",
+			type: "boolean",
+			default: false,
+		})
 		.example("btget movie.torrent", "Download torrent to current directory")
 		.example(
 			"btget movie.torrent -o ~/Downloads",
@@ -46,14 +51,21 @@ if (isDirectDownload) {
 				const torrentFilePath = argv._[0] as string;
 				const outputDirPath = path.resolve(argv.output as string);
 
+				// Debug args
+				console.log("Parsed args:", argv);
+
+				const dhtOnly = argv.dhtOnly || argv["dht-only"];
+				console.log("dhtOnly variable:", dhtOnly);
+
 				console.log(`Processing torrent file: ${torrentFilePath}`);
 				const torrent = open(torrentFilePath);
 				const torrentName = torrent.info.name.toString("utf8");
 
 				console.log(`Torrent loaded: ${torrentName}`);
 				console.log(`Files will be saved to: ${outputDirPath}`);
+				if (dhtOnly) console.log("📡 Mode: DHT Only (Trackers disabled)");
 
-				await downloadTorrent(torrent, outputDirPath);
+				await downloadTorrent(torrent, outputDirPath, { dhtOnly });
 				console.log(`✅ Download completed successfully for '${torrentName}'!`);
 			} catch (error: any) {
 				console.error("Error:", error.message);
@@ -78,12 +90,20 @@ if (isDirectDownload) {
 						describe: "Output directory for the downloaded files.",
 						type: "string",
 						default: ".", // Default to current directory
+					})
+					.option("dht-only", {
+						describe: "Use only DHT for peer discovery (disable trackers)",
+						type: "boolean",
+						default: false,
 					});
 			},
 			async (argv) => {
 				try {
 					const torrentFilePath = argv["torrent-file"] as string;
 					const outputDirPath = path.resolve(argv.output as string); // Resolve to absolute path
+					const dhtOnly = argv.dhtOnly || argv["dht-only"];
+					console.log("Running DIRECT DOWNLOAD mode");
+					console.log("dhtOnly variable:", dhtOnly, "Type:", typeof dhtOnly);
 
 					console.log(`Processing torrent file: ${torrentFilePath}`);
 					const torrent = open(torrentFilePath);
@@ -91,8 +111,10 @@ if (isDirectDownload) {
 
 					console.log(`Torrent loaded: ${torrentName}`);
 					console.log(`Files will be saved to: ${outputDirPath}`);
+					if (dhtOnly) console.log("📡 Mode: DHT Only (Trackers disabled)");
 
-					await downloadTorrent(torrent, outputDirPath);
+					console.log("Calling downloadTorrent with options:", { dhtOnly });
+					await downloadTorrent(torrent, outputDirPath, { dhtOnly });
 					console.log(
 						`✅ Download completed successfully for '${torrentName}'!`,
 					);
@@ -161,6 +183,10 @@ if (isDirectDownload) {
 		.example(
 			"btget download movie.torrent -o ~/Downloads",
 			"Download with command",
+		)
+		.example(
+			"btget download movie.torrent --dht-only",
+			"Download using only DHT",
 		)
 		.example("btget info movie.torrent", "Show torrent information")
 		.help()

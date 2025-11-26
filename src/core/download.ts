@@ -19,6 +19,7 @@ import { infoHash } from "../protocol/parser";
 export async function downloadTorrent(
 	torrent: Torrent,
 	outputDirPath: string,
+	options: { dhtOnly?: boolean } = {},
 ): Promise<void> {
 	const torrentName = torrent.info.name.toString("utf8");
 	const totalSize = size(torrent);
@@ -129,7 +130,8 @@ export async function downloadTorrent(
 		}, 1000);
 
 		// Start peer discovery
-		console.log("🔍 Searching for peers via Trackers and DHT...");
+		const discoverySource = options.dhtOnly ? "DHT Only" : "Trackers and DHT";
+		console.log(`🔍 Searching for peers via ${discoverySource}...`);
 
 		// Start DHT lookup
 		dht.on("peers", (peers: Array<{ ip: string; port: number }>) => {
@@ -137,21 +139,28 @@ export async function downloadTorrent(
 		});
 		dht.lookup(infoHash(torrent));
 
-		getPeers(torrent, (peers: Peer[]) => {
-			if (downloadComplete) return;
+		if (!options.dhtOnly) {
+			getPeers(torrent, (peers: Peer[]) => {
+				if (downloadComplete) return;
 
-			if (peers.length === 0) {
-				console.log("⚠️ No peers found from trackers, relying on DHT...");
-			} else {
-				// Initialize progress bar if not already started
-				// (might have been started by DHT peers)
-				if (!progressTracker["progressBar"]) {
-					progressTracker.initialize(torrentName, totalSize);
+				if (peers.length === 0) {
+					console.log("⚠️ No peers found from trackers, relying on DHT...");
+				} else {
+					// Initialize progress bar if not already started
+					// (might have been started by DHT peers)
+					if (!progressTracker["progressBar"]) {
+						progressTracker.initialize(torrentName, totalSize);
+					}
+
+					// Add peers to manager
+					peerManager.addPeers(peers);
 				}
-
-				// Add peers to manager
-				peerManager.addPeers(peers);
-			}
-		});
+			});
+		} else {
+			// In DHT only mode, we rely solely on DHT events
+			// Initialize progress bar immediately or wait for first peer?
+			// Let's initialize it so user sees something happening
+			progressTracker.initialize(torrentName, totalSize);
+		}
 	});
 }
