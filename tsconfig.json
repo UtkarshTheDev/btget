@@ -1,35 +1,33 @@
 {
-  "compilerOptions": {
-    "lib": ["ESNext"],
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleDetection": "force",
-    "allowJs": false,
-    
-    "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true,
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "noEmit": true, // Bun handles compilation
-    "rootDir": "./src",
-    
-    "strict": true,
-    "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": false,
-    
-    // Bun-specific optimizations
-    "isolatedModules": true,
-    "verbatimModuleSyntax": false
-  },
-  "include": ["src/**/*", "build.ts"],
-  "exclude": ["dist", "node_modules", "**/*.test.ts"]
+	"compilerOptions": {
+		"lib": ["ESNext"],
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleDetection": "force",
+		"allowJs": false,
+
+		"moduleResolution": "Bundler",
+		"allowImportingTsExtensions": true,
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"noEmit": true, // Bun handles compilation
+		"rootDir": "./src",
+
+		"strict": true,
+		"skipLibCheck": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noPropertyAccessFromIndexSignature": false,
+
+		// Bun-specific optimizations
+		"isolatedModules": true,
+		"verbatimModuleSyntax": false
+	},
+	"include": ["src/**/*"],
+	"exclude": ["dist", "node_modules", "**/*.test.ts", "build.ts"]
 }
-
-

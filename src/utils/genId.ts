@@ -5,8 +5,12 @@ let id: Buffer | null = null;
 
 export function genId() {
   if (!id) {
-    id = crypto.randomBytes(PEER_ID_LENGTH_BYTES);
-    Buffer.from("-AT0001-").copy(id, 0);
+    // Use a more standard peer ID format that trackers recognize
+    // Format: -qB4250- followed by random bytes (qBittorrent style)
+    id = Buffer.alloc(PEER_ID_LENGTH_BYTES);
+    Buffer.from("-qB4250-").copy(id, 0);
+    // Fill remaining 12 bytes with random data
+    crypto.randomBytes(12).copy(id, 8);
   }
   return id;
 }
