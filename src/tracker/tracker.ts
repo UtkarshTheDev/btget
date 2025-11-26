@@ -8,7 +8,13 @@ import { infoHash, size } from "../protocol/parser";
 import { genId } from "../utils/genId";
 import group from "../utils/group";
 
-export function getPeers(torrent: Torrent, callback: (peers: Peer[]) => void) {
+export function getPeers(
+	torrent: Torrent,
+	callback: (
+		peers: Peer[],
+		stats?: { seeds: number; leechers: number },
+	) => void,
+) {
 	console.log("🔍 Searching for peers for:", torrent.info.name.toString());
 
 	const urls = new Set<string>();
@@ -91,7 +97,7 @@ export function getPeers(torrent: Torrent, callback: (peers: Peer[]) => void) {
 		const urlStr = trackerArray[index];
 		if (!urlStr) return;
 
-		getPeersFromUrl(torrent, urlStr, (peers) => {
+		getPeersFromUrl(torrent, urlStr, (peers, stats) => {
 			if (callbackCalled) return;
 
 			const newPeers = peers.filter((p) => {
@@ -121,8 +127,17 @@ export function getPeers(torrent: Torrent, callback: (peers: Peer[]) => void) {
 					console.log(
 						`🚀 Excellent peer count reached! Starting with ${allPeers.length} peers`,
 					);
-					callback([...allPeers]);
+					callback([...allPeers], stats);
 					return;
+				}
+			}
+
+			// Pass stats even if no new peers, but usually we want to wait for peers
+			if (stats && (stats.seeds > 0 || stats.leechers > 0)) {
+				// We can send stats update without peers if needed, but for now let's stick to sending with peers
+				// or if we have peers already.
+				if (allPeers.length > 0) {
+					callback([...allPeers], stats);
 				}
 			}
 
@@ -138,7 +153,7 @@ export function getPeers(torrent: Torrent, callback: (peers: Peer[]) => void) {
 					console.log(
 						`🏁 All trackers done. Starting with ${allPeers.length} peers`,
 					);
-					callback([...allPeers]);
+					callback([...allPeers], stats);
 				} else {
 					console.error("❌ No peers found from any tracker");
 					tryDHTFallback(torrent, callback);
@@ -170,7 +185,10 @@ async function tryDHTFallback(
 function getPeersFromUrl(
 	torrent: Torrent,
 	urlStr: string,
-	callback: (peers: Peer[]) => void,
+	callback: (
+		peers: Peer[],
+		stats?: { seeds: number; leechers: number },
+	) => void,
 ) {
 	let url: URL;
 	try {
@@ -192,7 +210,10 @@ function getPeersFromUrl(
 function getPeersUdp(
 	torrent: Torrent,
 	url: string,
-	callback: (peers: Peer[]) => void,
+	callback: (
+		peers: Peer[],
+		stats?: { seeds: number; leechers: number },
+	) => void,
 ) {
 	const socket = dgram.createSocket("udp4");
 	let transactionId = crypto.randomBytes(4);
@@ -262,7 +283,10 @@ function getPeersUdp(
 					);
 				});
 
-				callback(validPeers);
+				callback(validPeers, {
+					seeds: announceResp.seeders,
+					leechers: announceResp.leechers,
+				});
 				try {
 					socket.close();
 				} catch (e) {}
@@ -287,7 +311,10 @@ function getPeersUdp(
 async function getPeersHttp(
 	torrent: Torrent,
 	urlStr: string,
-	callback: (peers: Peer[]) => void,
+	callback: (
+		peers: Peer[],
+		stats?: { seeds: number; leechers: number },
+	) => void,
 ) {
 	const infoHashBuf = infoHash(torrent);
 	const peerIdBuf = genId();
@@ -425,15 +452,17 @@ async function getPeersHttp(
 		}
 
 		// Log statistics if we got peers
+		let stats = undefined;
 		if (decoded.complete !== undefined || decoded.incomplete !== undefined) {
 			const seeders = decoded.complete || 0;
 			const leechers = decoded.incomplete || 0;
 			console.log(
 				`📊 Tracker stats - Seeders: ${seeders}, Leechers: ${leechers}, Peers returned: ${peers.length}`,
 			);
+			stats = { seeds: seeders, leechers: leechers };
 		}
 
-		callback(peers);
+		callback(peers, stats);
 	} catch (error) {
 		// Only log errors for debugging, don't spam console
 		// console.error(`HTTP Tracker Error for ${urlStr}:`, error.message);
