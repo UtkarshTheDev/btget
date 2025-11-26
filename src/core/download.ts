@@ -19,15 +19,19 @@ import { infoHash } from "../protocol/parser";
 export async function downloadTorrent(
 	torrent: Torrent,
 	outputDirPath: string,
-	options: { dhtOnly?: boolean } = {},
+	options: { dhtOnly?: boolean; onProgress?: (data: any) => void } = {},
 ): Promise<void> {
 	const torrentName = torrent.info.name.toString("utf8");
 	const totalSize = size(torrent);
 	const totalPieces = torrent.info.pieces.length / 20;
 
-	console.log(`🚀 Starting reliable download: ${torrentName}`);
-	console.log(`📦 Size: ${(Number(totalSize) / (1024 * 1024)).toFixed(2)} MB`);
-	console.log(`🧩 Initialized ${totalPieces} pieces`);
+	if (!options.onProgress) {
+		console.log(`🚀 Starting reliable download: ${torrentName}`);
+		console.log(
+			`📦 Size: ${(Number(totalSize) / (1024 * 1024)).toFixed(2)} MB`,
+		);
+		console.log(`🧩 Initialized ${totalPieces} pieces`);
+	}
 
 	// Create output directory
 	await fs.mkdir(outputDirPath, { recursive: true });
@@ -82,7 +86,8 @@ export async function downloadTorrent(
 				progressTracker.stop();
 				const progress =
 					(messageHandler.getTotalDownloaded() / Number(totalSize)) * 100;
-				console.log(`\n❌ Download timeout at ${progress.toFixed(1)}%`);
+				if (!options.onProgress)
+					console.log(`\n❌ Download timeout at ${progress.toFixed(1)}%`);
 				fileWriter
 					.cleanup()
 					.then(() =>
@@ -103,7 +108,10 @@ export async function downloadTorrent(
 			const progress = (downloaded / Number(totalSize)) * 100;
 
 			// Update progress
-			progressTracker.update(downloaded, connectedPeers);
+			progressTracker.update(downloaded, connectedPeers, {
+				seeds: currentSeeds,
+				leechers: currentLeechers,
+			});
 
 			// Check for endgame mode
 			if (endgameManager.shouldEnterEndgame(progress, queue.length())) {
@@ -119,11 +127,13 @@ export async function downloadTorrent(
 				peerManager.stop();
 				dht.stop();
 
-				console.log("\n✅ Download completed successfully!");
+				if (!options.onProgress)
+					console.log("\n✅ Download completed successfully!");
 				fileWriter.cleanup().then(() => {
-					console.log(
-						`✅ Download completed successfully for '${torrentName}'!`,
-					);
+					if (!options.onProgress)
+						console.log(
+							`✅ Download completed successfully for '${torrentName}'!`,
+						);
 					resolve();
 				});
 			}
@@ -131,7 +141,8 @@ export async function downloadTorrent(
 
 		// Start peer discovery
 		const discoverySource = options.dhtOnly ? "DHT Only" : "Trackers and DHT";
-		console.log(`🔍 Searching for peers via ${discoverySource}...`);
+		if (!options.onProgress)
+			console.log(`🔍 Searching for peers via ${discoverySource}...`);
 
 		// Start DHT lookup
 		dht.on("peers", (peers: Array<{ ip: string; port: number }>) => {
@@ -139,28 +150,32 @@ export async function downloadTorrent(
 		});
 		dht.lookup(infoHash(torrent));
 
-		if (!options.dhtOnly) {
-			getPeers(torrent, (peers: Peer[]) => {
-				if (downloadComplete) return;
+		// Initialize progress tracker immediately to ensure UI starts if callback provided
+		progressTracker.initialize(torrentName, totalSize, options.onProgress);
 
-				if (peers.length === 0) {
-					console.log("⚠️ No peers found from trackers, relying on DHT...");
-				} else {
-					// Initialize progress bar if not already started
-					// (might have been started by DHT peers)
-					if (!progressTracker["progressBar"]) {
-						progressTracker.initialize(torrentName, totalSize);
+		let currentSeeds = 0;
+		let currentLeechers = 0;
+
+		if (!options.dhtOnly) {
+			getPeers(
+				torrent,
+				(peers: Peer[], stats?: { seeds: number; leechers: number }) => {
+					if (stats) {
+						currentSeeds = Math.max(currentSeeds, stats.seeds);
+						currentLeechers = Math.max(currentLeechers, stats.leechers);
 					}
 
-					// Add peers to manager
-					peerManager.addPeers(peers);
-				}
-			});
-		} else {
-			// In DHT only mode, we rely solely on DHT events
-			// Initialize progress bar immediately or wait for first peer?
-			// Let's initialize it so user sees something happening
-			progressTracker.initialize(torrentName, totalSize);
+					if (downloadComplete) return;
+
+					if (peers.length === 0) {
+						if (!options.onProgress)
+							console.log("⚠️ No peers found from trackers, relying on DHT...");
+					} else {
+						// Add peers to manager
+						peerManager.addPeers(peers);
+					}
+				},
+			);
 		}
 	});
 }
