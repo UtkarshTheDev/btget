@@ -91,5 +91,10 @@
   "funding": {
     "type": "github",
     "url": "https://github.com/sponsors/UtkarshTheDev"
+  },
+  "overrides": {
+    "ink": {
+      "react-devtools-core": "7.0.1"
+    }
   }
 }
