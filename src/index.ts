@@ -35,6 +35,12 @@ if (isDirectDownload) {
 			type: "boolean",
 			default: false,
 		})
+		.option("debug", {
+			alias: "d",
+			describe: "Debug mode - show console logs instead of TUI",
+			type: "boolean",
+			default: false,
+		})
 		.example("btget movie.torrent", "Download torrent to current directory")
 		.example(
 			"btget movie.torrent -o ~/Downloads",
@@ -54,6 +60,7 @@ if (isDirectDownload) {
 				const torrentFilePath = argv._[0] as string;
 				const outputDirPath = path.resolve(argv.output as string);
 				const dhtOnly = argv.dhtOnly || argv["dht-only"];
+				const debugMode = argv.debug || argv.d;
 
 				// Initial setup without UI to read torrent info
 				const torrent = open(torrentFilePath);
@@ -63,75 +70,93 @@ if (isDirectDownload) {
 					(Number(totalSize) / (1024 * 1024)).toFixed(2) + " MB";
 				const hash = infoHash(torrent).toString("hex").substring(0, 8) + "...";
 
-				// Start UI
-				uiControls = startUI({
-					filename: torrentName,
-					size: formattedSize,
-					hash: hash,
-					progress: 0,
-					speed: 0,
-					eta: "--",
-					peers: 0,
-					seeds: 0,
-					leechers: 0,
-					status: "Initializing...",
-					speedHistory: Array(30).fill(0),
-				});
+				let currentSpeedHistory = Array(30).fill(0);
 
-				// Suppress console logs during UI execution
+				// Store original console methods
 				const originalLog = console.log;
 				const originalError = console.error;
-				console.log = () => {};
-				console.error = () => {};
 
-				let currentSpeedHistory = Array(30).fill(0);
+				// Start UI only if not in debug mode
+				if (!debugMode) {
+					uiControls = startUI({
+						filename: torrentName,
+						size: formattedSize,
+						hash: hash,
+						progress: 0,
+						speed: 0,
+						eta: "--",
+						peers: 0,
+						seeds: 0,
+						leechers: 0,
+						status: "Initializing...",
+						speedHistory: Array(30).fill(0),
+					});
+
+					// Suppress console logs during UI execution
+					console.log = () => {};
+					console.error = () => {};
+				} else {
+					console.log(`🚀 Starting download in DEBUG mode: ${torrentName}`);
+					console.log(`📦 Size: ${formattedSize}`);
+					console.log(`🔑 Hash: ${hash}`);
+				}
 
 				await downloadTorrent(torrent, outputDirPath, {
 					dhtOnly,
-					onProgress: (data) => {
-						// Calculate ETA
-						const remaining = Number(totalSize) - data.downloaded;
-						const speedBytes = data.speed * 1024;
-						let eta = "--";
-						if (speedBytes > 0) {
-							const seconds = remaining / speedBytes;
-							const mins = Math.floor(seconds / 60);
-							const secs = Math.floor(seconds % 60);
-							eta = `${mins}m ${secs}s`;
-						}
+					onProgress: debugMode
+						? undefined
+						: (data) => {
+								// Calculate ETA
+								const remaining = Number(totalSize) - data.downloaded;
+								const speedBytes = data.speed * 1024;
+								let eta = "--";
+								if (speedBytes > 0) {
+									const seconds = remaining / speedBytes;
+									const mins = Math.floor(seconds / 60);
+									const secs = Math.floor(seconds % 60);
+									eta = `${mins}m ${secs}s`;
+								}
 
-						// Update speed history
-						currentSpeedHistory = [...currentSpeedHistory.slice(1), data.speed];
+								// Update speed history
+								currentSpeedHistory = [
+									...currentSpeedHistory.slice(1),
+									data.speed,
+								];
 
-						uiControls.updateUI({
-							progress: (data.downloaded / Number(totalSize)) * 100,
-							speed: data.speed, // KB/s
-							peers: data.peers,
-							seeds: data.seeds || 0,
-							leechers: data.leechers || 0,
-							eta: eta,
-							status:
-								data.downloaded > 0 ? "Downloading..." : "Finding Peers...",
-							speedHistory: currentSpeedHistory,
-						});
-					},
+								uiControls.updateUI({
+									progress: (data.downloaded / Number(totalSize)) * 100,
+									speed: data.speed, // KB/s
+									peers: data.peers,
+									seeds: data.seeds || 0,
+									leechers: data.leechers || 0,
+									eta: eta,
+									status:
+										data.downloaded > 0 ? "Downloading..." : "Finding Peers...",
+									speedHistory: currentSpeedHistory,
+								});
+							},
 				});
 
-				// Restore console
-				console.log = originalLog;
-				console.error = originalError;
+				if (!debugMode) {
+					// Restore console
+					console.log = originalLog;
+					console.error = originalError;
 
-				uiControls.updateUI({
-					status: "Completed",
-					progress: 100,
-					eta: "0m 0s",
-				});
+					uiControls.updateUI({
+						status: "Completed",
+						progress: 100,
+						eta: "0m 0s",
+					});
 
-				// Auto-exit after 3 seconds
-				setTimeout(() => {
-					if (uiControls) uiControls.stopUI();
+					// Auto-exit after 3 seconds
+					setTimeout(() => {
+						if (uiControls) uiControls.stopUI();
+						process.exit(0);
+					}, 3000);
+				} else {
+					console.log("\n✅ Download completed successfully!");
 					process.exit(0);
-				}, 3000);
+				}
 			} catch (error: any) {
 				if (uiControls) {
 					uiControls.stopUI();
@@ -163,6 +188,12 @@ if (isDirectDownload) {
 						describe: "Use only DHT for peer discovery (disable trackers)",
 						type: "boolean",
 						default: false,
+					})
+					.option("debug", {
+						alias: "d",
+						describe: "Debug mode - show console logs instead of TUI",
+						type: "boolean",
+						default: false,
 					});
 			},
 			async (argv) => {
@@ -172,6 +203,7 @@ if (isDirectDownload) {
 					const torrentFilePath = argv["torrent-file"] as string;
 					const outputDirPath = path.resolve(argv.output as string); // Resolve to absolute path
 					const dhtOnly = argv.dhtOnly || argv["dht-only"];
+					const debugMode = argv.debug || argv.d;
 
 					// Initial setup without UI to read torrent info
 					const torrent = open(torrentFilePath);
@@ -182,78 +214,95 @@ if (isDirectDownload) {
 					const hash =
 						infoHash(torrent).toString("hex").substring(0, 8) + "...";
 
-					// Start UI
-					uiControls = startUI({
-						filename: torrentName,
-						size: formattedSize,
-						hash: hash,
-						progress: 0,
-						speed: 0,
-						eta: "--",
-						peers: 0,
-						seeds: 0,
-						leechers: 0,
-						status: "Initializing...",
-						speedHistory: Array(30).fill(0),
-					});
+					let currentSpeedHistory = Array(30).fill(0);
 
-					// Suppress console logs during UI execution
+					// Store original console methods
 					const originalLog = console.log;
 					const originalError = console.error;
-					console.log = () => {};
-					console.error = () => {};
 
-					let currentSpeedHistory = Array(30).fill(0);
+					// Start UI only if not in debug mode
+					if (!debugMode) {
+						uiControls = startUI({
+							filename: torrentName,
+							size: formattedSize,
+							hash: hash,
+							progress: 0,
+							speed: 0,
+							eta: "--",
+							peers: 0,
+							seeds: 0,
+							leechers: 0,
+							status: "Initializing...",
+							speedHistory: Array(30).fill(0),
+						});
+
+						// Suppress console logs during UI execution
+						console.log = () => {};
+						console.error = () => {};
+					} else {
+						console.log(`🚀 Starting download in DEBUG mode: ${torrentName}`);
+						console.log(`📦 Size: ${formattedSize}`);
+						console.log(`🔑 Hash: ${hash}`);
+					}
 
 					await downloadTorrent(torrent, outputDirPath, {
 						dhtOnly,
-						onProgress: (data) => {
-							// Calculate ETA
-							const remaining = Number(totalSize) - data.downloaded;
-							const speedBytes = data.speed * 1024;
-							let eta = "--";
-							if (speedBytes > 0) {
-								const seconds = remaining / speedBytes;
-								const mins = Math.floor(seconds / 60);
-								const secs = Math.floor(seconds % 60);
-								eta = `${mins}m ${secs}s`;
-							}
+						onProgress: debugMode
+							? undefined
+							: (data) => {
+									// Calculate ETA
+									const remaining = Number(totalSize) - data.downloaded;
+									const speedBytes = data.speed * 1024;
+									let eta = "--";
+									if (speedBytes > 0) {
+										const seconds = remaining / speedBytes;
+										const mins = Math.floor(seconds / 60);
+										const secs = Math.floor(seconds % 60);
+										eta = `${mins}m ${secs}s`;
+									}
 
-							// Update speed history
-							currentSpeedHistory = [
-								...currentSpeedHistory.slice(1),
-								data.speed,
-							];
+									// Update speed history
+									currentSpeedHistory = [
+										...currentSpeedHistory.slice(1),
+										data.speed,
+									];
 
-							uiControls.updateUI({
-								progress: (data.downloaded / Number(totalSize)) * 100,
-								speed: data.speed, // KB/s
-								peers: data.peers,
-								seeds: data.seeds || 0,
-								leechers: data.leechers || 0,
-								eta: eta,
-								status:
-									data.downloaded > 0 ? "Downloading..." : "Finding Peers...",
-								speedHistory: currentSpeedHistory,
-							});
-						},
+									uiControls.updateUI({
+										progress: (data.downloaded / Number(totalSize)) * 100,
+										speed: data.speed, // KB/s
+										peers: data.peers,
+										seeds: data.seeds || 0,
+										leechers: data.leechers || 0,
+										eta: eta,
+										status:
+											data.downloaded > 0
+												? "Downloading..."
+												: "Finding Peers...",
+										speedHistory: currentSpeedHistory,
+									});
+								},
 					});
 
-					// Restore console
-					console.log = originalLog;
-					console.error = originalError;
+					if (!debugMode) {
+						// Restore console
+						console.log = originalLog;
+						console.error = originalError;
 
-					uiControls.updateUI({
-						status: "Completed",
-						progress: 100,
-						eta: "0m 0s",
-					});
+						uiControls.updateUI({
+							status: "Completed",
+							progress: 100,
+							eta: "0m 0s",
+						});
 
-					// Auto-exit after 3 seconds
-					setTimeout(() => {
-						if (uiControls) uiControls.stopUI();
+						// Auto-exit after 3 seconds
+						setTimeout(() => {
+							if (uiControls) uiControls.stopUI();
+							process.exit(0);
+						}, 3000);
+					} else {
+						console.log("\n✅ Download completed successfully!");
 						process.exit(0);
-					}, 3000);
+					}
 				} catch (error: any) {
 					if (uiControls) {
 						uiControls.stopUI();
