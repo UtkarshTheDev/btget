@@ -130,16 +130,18 @@ Look for issues labeled `good first issue` or `help wanted`:
 ```
 src/
 ├── index.ts              # CLI entry point
-├── types/                # Type definitions
-└── utils/                # Core functionality
-    ├── download.ts       # Download management
-    ├── tracker.ts        # Tracker communication
-    ├── parser.ts         # Torrent parsing
-    ├── pieces.ts         # Piece management
-    ├── queue.ts          # Download queue
-    ├── messages.ts       # Protocol messages
-    ├── genId.ts          # ID generation
-    └── group.ts          # Data grouping
+├── core/                 # Core logic modules
+│   ├── download.ts       # Download orchestrator
+│   ├── handlers/         # Protocol handlers
+│   └── modules/          # Feature modules (FileWriter, Progress, etc.)
+├── dht/                  # Distributed Hash Table (DHT)
+├── peers/                # Peer connection management
+├── pieces/               # Piece handling and verification
+├── protocol/             # BitTorrent protocol parsing
+├── queue/                # Piece request queuing
+├── tracker/              # Tracker communication
+├── types/                # TypeScript type definitions
+└── utils/                # General utilities
 ```
 
 ### Available Scripts
@@ -187,6 +189,7 @@ bun run clean           # Remove build files
    bun run build
    ./dist/index.js info test.torrent
    ./dist/index.js download test.torrent -o /tmp/test
+   ./dist/index.js download test.torrent --dht-only
    ```
 
 ## 🔄 Pull Request Process

@@ -41,11 +41,12 @@ The following are **IN SCOPE** for security reports:
 - **Code execution** vulnerabilities
 - **Authentication bypass**
 - **Data exposure** or unauthorized access
-- **Network protocol** vulnerabilities
+- **Network protocol** vulnerabilities (including DHT)
 - **Dependency vulnerabilities** affecting btget
 - **Cryptographic** weaknesses
 - **Input validation** issues
 - **Path traversal** vulnerabilities
+- **Peer connection** security
 
 The following are **OUT OF SCOPE**:
 
