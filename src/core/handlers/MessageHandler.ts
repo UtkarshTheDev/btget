@@ -3,6 +3,8 @@ import type Queue from "../../queue/Queue";
 import type { Torrent } from "../../types/index";
 import { FileWriter } from "../modules/FileWriter";
 import { EndgameManager, type ExtendedSocket } from "../modules/EndgameManager";
+import { UploadManager } from "../modules/UploadManager";
+import { buildHave } from "../../protocol/messages";
 
 // Helper to create unique block identifier
 function blockId(block: { index: number; begin: number }): string {
@@ -20,6 +22,7 @@ export class MessageHandler {
 		private torrent: Torrent,
 		private fileWriter: FileWriter,
 		private endgameManager: EndgameManager,
+		private uploadManager: UploadManager,
 	) {
 		this.totalPieces = torrent.info.pieces.length / 20;
 	}
@@ -113,6 +116,17 @@ export class MessageHandler {
 				}
 				break;
 
+			case 6: // request
+				if (data.length >= 13) {
+					const request = {
+						index: data.readUInt32BE(1),
+						begin: data.readUInt32BE(5),
+						length: data.readUInt32BE(9),
+					};
+					this.uploadManager.handlePeerRequest(socket, request);
+				}
+				break;
+
 			case 7: // piece
 				this.handlePiece(socket, data, pieces, allSockets);
 				break;
@@ -158,11 +172,21 @@ export class MessageHandler {
 			length: block.length,
 		});
 
+		// Check if piece is complete and broadcast HAVE
+		if (pieces.isPieceDone(pieceIndex)) {
+			this.broadcastHave(pieceIndex, allSockets);
+		}
+
 		// Write to disk
 		await this.fileWriter.writeBlock(pieceIndex, begin, block);
 
 		// Update download counter
 		this.totalDownloaded += block.length;
+
+		// Track peer download rate for tit-for-tat
+		if (socket.peerId) {
+			this.uploadManager.trackPeerDownloadRate(socket.peerId, block.length);
+		}
 
 		// Update peer stats
 		socket.downloaded = (socket.downloaded ?? 0) + block.length;
@@ -176,6 +200,25 @@ export class MessageHandler {
 		} else {
 			socket.lastMeasureTime = now;
 		}
+	}
+
+	/**
+	 * Broadcast HAVE message to all connected peers
+	 */
+	private broadcastHave(
+		pieceIndex: number,
+		allSockets: Map<string, ExtendedSocket>,
+	): void {
+		const haveMessage = buildHave(pieceIndex);
+		allSockets.forEach((socket) => {
+			if (!socket.destroyed && socket.writable) {
+				try {
+					socket.write(haveMessage);
+				} catch (error) {
+					// Silently ignore write errors
+				}
+			}
+		});
 	}
 
 	/**
