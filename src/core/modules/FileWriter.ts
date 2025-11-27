@@ -136,4 +136,54 @@ export class FileWriter {
 	getFilePaths(): string[] {
 		return this.files.map((f) => f.path);
 	}
+
+	/**
+	 * Read a piece block from disk for uploading to peers
+	 */
+	async readPieceBlock(
+		pieceIndex: number,
+		begin: number,
+		length: number,
+	): Promise<Buffer> {
+		const pieceLength = this.torrent.info["piece length"] as number;
+		const globalOffset =
+			BigInt(pieceIndex) * BigInt(pieceLength) + BigInt(begin);
+
+		const result = Buffer.alloc(length);
+		let resultOffset = 0;
+
+		try {
+			for (const fileEntry of this.files) {
+				const fileStart = fileEntry.offset;
+				const fileEnd = fileEntry.offset + fileEntry.length;
+
+				if (
+					globalOffset < fileEnd &&
+					globalOffset + BigInt(length) > fileStart
+				) {
+					const intersectionStart =
+						globalOffset > fileStart ? globalOffset : fileStart;
+					const intersectionEnd =
+						globalOffset + BigInt(length) < fileEnd
+							? globalOffset + BigInt(length)
+							: fileEnd;
+
+					if (intersectionStart < intersectionEnd) {
+						const fileOffsetStart = Number(intersectionStart - fileStart);
+						const readLength = Number(intersectionEnd - intersectionStart);
+
+						const buffer = Buffer.alloc(readLength);
+						await fileEntry.handle.read(buffer, 0, readLength, fileOffsetStart);
+
+						buffer.copy(result, resultOffset);
+						resultOffset += readLength;
+					}
+				}
+			}
+
+			return result;
+		} catch (error) {
+			throw new Error(`Failed to read piece block: ${error}`);
+		}
+	}
 }
