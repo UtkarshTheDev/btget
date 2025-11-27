@@ -7,6 +7,8 @@ export const SwarmGrid = ({
 	seeds,
 	leechers,
 	ratio,
+	uploaded,
+	downloaded,
 	trackersActive,
 	trackersTotal,
 }: SwarmGridProps) => {
@@ -54,7 +56,9 @@ export const SwarmGrid = ({
 				<Box flexDirection="row" flexWrap="wrap" marginTop={1} gap={4}>
 					<Text>🌱 Seeds: {seeds}</Text>
 					<Text>🐌 Leechers: {leechers}</Text>
-					<Text>⚖️ Ratio: {ratio.toFixed(2)}</Text>
+					<Text>📤 Up: {uploaded}</Text>
+					<Text>📥 Down: {downloaded}</Text>
+					<Text>⚖️ Ratio: {(ratio || 0).toFixed(2)}</Text>
 					<Text>
 						📡 Trackers: {trackersActive}/{trackersTotal}
 					</Text>
