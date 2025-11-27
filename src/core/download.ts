@@ -12,6 +12,7 @@ import { TimeoutManager } from "./modules/TimeoutManager";
 import { PeerManager } from "../peers/PeerManager";
 import { DistributedHashTable } from "../dht/DistributedHashTable";
 import { infoHash } from "../protocol/parser";
+import { UploadManager } from "./modules/UploadManager";
 
 /**
  * Download a torrent file
@@ -38,11 +39,13 @@ export async function downloadTorrent(
 
 	// Initialize modules
 	const fileWriter = new FileWriter(torrent);
+	const uploadManager = new UploadManager(fileWriter);
 	const endgameManager = new EndgameManager();
 	const messageHandler = new MessageHandler(
 		torrent,
 		fileWriter,
 		endgameManager,
+		uploadManager,
 	);
 	const progressTracker = new ProgressTracker();
 	const timeoutManager = new TimeoutManager();
@@ -70,6 +73,7 @@ export async function downloadTorrent(
 			queue,
 			messageHandler,
 			endgameManager,
+			uploadManager,
 		);
 
 		// Start timeout management
@@ -124,13 +128,29 @@ export async function downloadTorrent(
 
 			const downloaded = messageHandler.getTotalDownloaded();
 			const connectedPeers = peerManager.getConnectedPeers();
-			const progress = (downloaded / Number(totalSize)) * 100;
+
+			// Use verified pieces for accurate progress (prevents exceeding 100%)
+			const verifiedPieces = pieces.getVerifiedCount();
+			const progress = (verifiedPieces / totalPieces) * 100;
 
 			// Update progress
 			progressTracker.update(downloaded, connectedPeers, {
 				seeds: currentSeeds,
 				leechers: currentLeechers,
 			});
+
+			// Call user progress callback with upload stats
+			if (options.onProgress) {
+				options.onProgress({
+					downloaded,
+					uploaded: uploadManager.getTotalUploaded(),
+					downloadSpeed: peerManager.getDownloadSpeed(),
+					uploadSpeed: uploadManager.getUploadSpeed(),
+					peers: connectedPeers,
+					seeds: currentSeeds,
+					leechers: currentLeechers,
+				});
+			}
 
 			// Check for endgame mode
 			if (endgameManager.shouldEnterEndgame(progress, queue.length())) {
@@ -144,6 +164,7 @@ export async function downloadTorrent(
 				timeoutManager.clearAll();
 				progressTracker.stop();
 				peerManager.stop();
+				uploadManager.stop();
 				dht.stop();
 
 				if (!options.onProgress)
