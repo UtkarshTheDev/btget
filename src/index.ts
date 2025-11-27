@@ -71,6 +71,7 @@ if (isDirectDownload) {
 				const hash = infoHash(torrent).toString("hex").substring(0, 8) + "...";
 
 				let currentSpeedHistory = Array(30).fill(0);
+				let currentUploadSpeedHistory = Array(30).fill(0);
 
 				// Store original console methods
 				const originalLog = console.log;
@@ -84,12 +85,17 @@ if (isDirectDownload) {
 						hash: hash,
 						progress: 0,
 						speed: 0,
+						uploadSpeed: 0,
 						eta: "--",
 						peers: 0,
 						seeds: 0,
 						leechers: 0,
 						status: "Initializing...",
 						speedHistory: Array(30).fill(0),
+						uploadSpeedHistory: Array(30).fill(0),
+						uploaded: 0,
+						downloaded: 0,
+						ratio: 0,
 					});
 
 					// Suppress console logs during UI execution
@@ -108,7 +114,7 @@ if (isDirectDownload) {
 						: (data) => {
 								// Calculate ETA
 								const remaining = Number(totalSize) - data.downloaded;
-								const speedBytes = data.speed * 1024;
+								const speedBytes = data.downloadSpeed; // Already in bytes/sec
 								let eta = "--";
 								if (speedBytes > 0) {
 									const seconds = remaining / speedBytes;
@@ -118,14 +124,21 @@ if (isDirectDownload) {
 								}
 
 								// Update speed history
+								const downloadSpeedKb = data.downloadSpeed / 1024; // Convert bytes/sec to KB/s
+								const uploadSpeedKb = data.uploadSpeed / 1024; // Convert bytes/sec to KB/s
 								currentSpeedHistory = [
 									...currentSpeedHistory.slice(1),
-									data.speed,
+									downloadSpeedKb,
+								];
+								currentUploadSpeedHistory = [
+									...currentUploadSpeedHistory.slice(1),
+									uploadSpeedKb,
 								];
 
 								uiControls.updateUI({
 									progress: (data.downloaded / Number(totalSize)) * 100,
-									speed: data.speed, // KB/s
+									speed: downloadSpeedKb, // Download KB/s
+									uploadSpeed: uploadSpeedKb, // Upload KB/s
 									peers: data.peers,
 									seeds: data.seeds || 0,
 									leechers: data.leechers || 0,
@@ -133,6 +146,11 @@ if (isDirectDownload) {
 									status:
 										data.downloaded > 0 ? "Downloading..." : "Finding Peers...",
 									speedHistory: currentSpeedHistory,
+									uploadSpeedHistory: currentUploadSpeedHistory,
+									uploaded: data.uploaded,
+									downloaded: data.downloaded,
+									ratio:
+										data.downloaded > 0 ? data.uploaded / data.downloaded : 0,
 								});
 							},
 				});
@@ -215,6 +233,7 @@ if (isDirectDownload) {
 						infoHash(torrent).toString("hex").substring(0, 8) + "...";
 
 					let currentSpeedHistory = Array(30).fill(0);
+					let currentUploadSpeedHistory = Array(30).fill(0);
 
 					// Store original console methods
 					const originalLog = console.log;
@@ -228,12 +247,17 @@ if (isDirectDownload) {
 							hash: hash,
 							progress: 0,
 							speed: 0,
+							uploadSpeed: 0,
 							eta: "--",
 							peers: 0,
 							seeds: 0,
 							leechers: 0,
 							status: "Initializing...",
 							speedHistory: Array(30).fill(0),
+							uploadSpeedHistory: Array(30).fill(0),
+							uploaded: 0,
+							downloaded: 0,
+							ratio: 0,
 						});
 
 						// Suppress console logs during UI execution
@@ -252,7 +276,7 @@ if (isDirectDownload) {
 							: (data) => {
 									// Calculate ETA
 									const remaining = Number(totalSize) - data.downloaded;
-									const speedBytes = data.speed * 1024;
+									const speedBytes = data.downloadSpeed; // Already in bytes/sec
 									let eta = "--";
 									if (speedBytes > 0) {
 										const seconds = remaining / speedBytes;
@@ -262,14 +286,21 @@ if (isDirectDownload) {
 									}
 
 									// Update speed history
+									const downloadSpeedKb = data.downloadSpeed / 1024; // Convert bytes/sec to KB/s
+									const uploadSpeedKb = data.uploadSpeed / 1024; // Convert bytes/sec to KB/s
 									currentSpeedHistory = [
 										...currentSpeedHistory.slice(1),
-										data.speed,
+										downloadSpeedKb,
+									];
+									currentUploadSpeedHistory = [
+										...currentUploadSpeedHistory.slice(1),
+										uploadSpeedKb,
 									];
 
 									uiControls.updateUI({
 										progress: (data.downloaded / Number(totalSize)) * 100,
-										speed: data.speed, // KB/s
+										speed: downloadSpeedKb, // Download KB/s
+										uploadSpeed: uploadSpeedKb, // Upload KB/s
 										peers: data.peers,
 										seeds: data.seeds || 0,
 										leechers: data.leechers || 0,
@@ -279,6 +310,11 @@ if (isDirectDownload) {
 												? "Downloading..."
 												: "Finding Peers...",
 										speedHistory: currentSpeedHistory,
+										uploadSpeedHistory: currentUploadSpeedHistory,
+										uploaded: data.uploaded,
+										downloaded: data.downloaded,
+										ratio:
+											data.downloaded > 0 ? data.uploaded / data.downloaded : 0,
 									});
 								},
 					});
