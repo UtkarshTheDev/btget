@@ -11,28 +11,7 @@ export const Hero = ({
 	uploadSpeed,
 	eta,
 	status,
-	speedHistory = [],
-	uploadSpeedHistory = [],
 }: HeroProps) => {
-	// Custom bar chart renderer
-	const renderBars = (data: number[]) => {
-		const safeData = data && data.length > 0 ? data : Array(30).fill(0);
-		const max = Math.max(...safeData, 1);
-		// Use block characters for sparkline visualization
-		const levels = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
-
-		// Build the sparkline as a single string
-		const sparkline = safeData
-			.map((val) => {
-				if (val === 0) return " "; // Explicitly handle 0 as space
-				const heightIndex = Math.floor((val / max) * (levels.length - 1));
-				return levels[Math.min(heightIndex, levels.length - 1)];
-			})
-			.join("");
-
-		return sparkline;
-	};
-
 	const formatSpeed = (speedKb: number) => {
 		if (!speedKb || speedKb === 0) return "0 KB/s";
 		if (speedKb >= 1024) {
@@ -75,11 +54,6 @@ export const Hero = ({
 						| ETA: {eta} | {(progress || 0).toFixed(1)}%
 					</Text>
 				</Text>
-			</Box>
-
-			{/* Download Sparkline */}
-			<Box justifyContent="center" marginBottom={1}>
-				<Text color="cyan">{renderBars(speedHistory)}</Text>
 			</Box>
 
 			{/* Progress Bar */}
