@@ -14,6 +14,7 @@ import {
 	EndgameManager,
 	type ExtendedSocket,
 } from "../core/modules/EndgameManager";
+import { UploadManager } from "../core/modules/UploadManager";
 
 /**
  * PeerManager handles peer connections, pooling, and lifecycle
@@ -36,6 +37,7 @@ export class PeerManager {
 		private queue: Queue,
 		private messageHandler: MessageHandler,
 		private endgameManager: EndgameManager,
+		private uploadManager: UploadManager,
 	) {
 		this.totalPieces = torrent.info.pieces.length / 20;
 
@@ -61,6 +63,7 @@ export class PeerManager {
 		clearInterval(this.healthCheckInterval);
 		this.activeSockets.forEach((socket) => socket.destroy());
 		this.activeSockets.clear();
+		this.uploadManager.stop();
 	}
 
 	/**
@@ -118,6 +121,8 @@ export class PeerManager {
 			this.activePeers++;
 			this.activeSockets.set(peerId, socket);
 			socket.write(buildHandshake(this.torrent));
+			// Register peer with upload manager
+			this.uploadManager.registerPeer(peerId);
 		});
 
 		// Data event
@@ -159,6 +164,9 @@ export class PeerManager {
 				);
 				messageBuffer = messageBuffer.slice(consumed);
 
+				// Send choke/unchoke messages based on upload manager decisions
+				this.uploadManager.sendChokeMessages(this.activeSockets);
+
 				// Request more pieces if unchoked
 				if (!socket.choked && !socket.destroyed) {
 					this.requestPieces(socket);
@@ -185,6 +193,9 @@ export class PeerManager {
 					this.connectedPeers = Math.max(0, this.connectedPeers - 1);
 				}
 			}
+
+			// Remove peer from upload manager
+			this.uploadManager.removePeer(peerId);
 
 			// Remove peer from queue tracking
 			if (socket.peerId) {
@@ -280,6 +291,20 @@ export class PeerManager {
 			}
 		});
 		return totalSpeed;
+	}
+
+	/**
+	 * Get total upload speed (bytes/sec)
+	 */
+	getUploadSpeed(): number {
+		return this.uploadManager.getUploadSpeed();
+	}
+
+	/**
+	 * Get total uploaded bytes
+	 */
+	getTotalUploaded(): number {
+		return this.uploadManager.getTotalUploaded();
 	}
 
 	/**
