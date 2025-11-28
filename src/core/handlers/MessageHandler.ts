@@ -36,6 +36,7 @@ export class MessageHandler {
 		pieces: Pieces,
 		queue: Queue,
 		allSockets: Map<string, ExtendedSocket>,
+		requestMorePieces?: (socket: ExtendedSocket) => void,
 	): number {
 		let offset = 0;
 
@@ -65,6 +66,7 @@ export class MessageHandler {
 					pieces,
 					queue,
 					allSockets,
+					requestMorePieces,
 				);
 			} catch (error) {
 				// Silently ignore message processing errors
@@ -86,6 +88,7 @@ export class MessageHandler {
 		pieces: Pieces,
 		queue: Queue,
 		allSockets: Map<string, ExtendedSocket>,
+		requestMorePieces?: (socket: ExtendedSocket) => void,
 	): void {
 		switch (messageId) {
 			case 0: // choke
@@ -128,7 +131,7 @@ export class MessageHandler {
 				break;
 
 			case 7: // piece
-				this.handlePiece(socket, data, pieces, allSockets);
+				this.handlePiece(socket, data, pieces, allSockets, requestMorePieces);
 				break;
 		}
 	}
@@ -141,12 +144,41 @@ export class MessageHandler {
 		data: Buffer,
 		pieces: Pieces,
 		allSockets: Map<string, ExtendedSocket>,
+		requestMorePieces?: (socket: ExtendedSocket) => void,
 	): Promise<void> {
 		const pieceIndex = data.readUInt32BE(1);
 		const begin = data.readUInt32BE(5);
 		const block = data.slice(9);
 
 		const blockKey = blockId({ index: pieceIndex, begin });
+
+		// Fix 2: Measure RTT for adaptive pipelining
+		const now = Date.now();
+		if (socket.requestTimestamps && socket.requestTimestamps.has(blockKey)) {
+			const requestTime = socket.requestTimestamps.get(blockKey)!;
+			const rtt = now - requestTime;
+
+			// Update rolling latency (exponential moving average, alpha = 0.3)
+			if (socket.rollingLatency === undefined) {
+				socket.rollingLatency = rtt;
+			} else {
+				socket.rollingLatency = socket.rollingLatency * 0.7 + rtt * 0.3;
+			}
+
+			// Adaptive pipeline scaling based on RTT
+			if (!socket.maxPipeline) socket.maxPipeline = 10; // Initialize
+
+			if (rtt < 500) {
+				// Fast peer - increase pipeline (cap at 50)
+				socket.maxPipeline = Math.min(50, socket.maxPipeline + 1);
+			} else if (rtt > 1000) {
+				// Slow peer - decrease pipeline (floor at 2)
+				socket.maxPipeline = Math.max(2, socket.maxPipeline - 1);
+			}
+
+			// Clean up timestamp
+			socket.requestTimestamps.delete(blockKey);
+		}
 
 		// Remove from active requests
 		if (socket.activeRequests) {
@@ -190,7 +222,6 @@ export class MessageHandler {
 
 		// Update peer stats
 		socket.downloaded = (socket.downloaded ?? 0) + block.length;
-		const now = Date.now();
 		const duration = (now - (socket.lastMeasureTime ?? now)) / 1000;
 		if (duration > 0) {
 			// Simple speed calculation (bytes/sec) - exponential moving average could be better but this is simple
@@ -199,6 +230,11 @@ export class MessageHandler {
 			socket.lastMeasureTime = now;
 		} else {
 			socket.lastMeasureTime = now;
+		}
+
+		// Fix 1: Immediately request more pieces to keep pipeline full (eliminate stop-and-wait)
+		if (requestMorePieces && !socket.choked && !socket.destroyed) {
+			requestMorePieces(socket);
 		}
 	}
 
