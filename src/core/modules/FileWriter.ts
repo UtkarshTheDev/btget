@@ -39,6 +39,9 @@ export class FileWriter {
 		if (isMultiFile) {
 			let currentOffset = BigInt(0);
 
+			// 🔒 SECURITY: Resolve base directory to prevent path traversal
+			const baseDir = path.resolve(outputDirPath, torrentName);
+
 			for (const file of this.torrent.info.files as File[]) {
 				const filePathParts = file.path.map((p: Buffer) => p.toString("utf8"));
 				const fullFilePath = path.join(
@@ -46,14 +49,25 @@ export class FileWriter {
 					torrentName,
 					...filePathParts,
 				);
-				const fileDir = path.dirname(fullFilePath);
+
+				// 🔒 SECURITY: Prevent "Zip Slip" path traversal attack
+				// Resolve the full path and verify it's within the base directory
+				const resolvedPath = path.resolve(fullFilePath);
+				if (!resolvedPath.startsWith(baseDir)) {
+					throw new Error(
+						`Security Error: Path traversal detected in torrent file. ` +
+							`File path "${filePathParts.join("/")}" attempts to escape the output directory.`,
+					);
+				}
+
+				const fileDir = path.dirname(resolvedPath);
 
 				await fs.mkdir(fileDir, { recursive: true });
-				const handle = await fs.open(fullFilePath, "w+");
+				const handle = await fs.open(resolvedPath, "w+");
 
 				this.files.push({
 					handle,
-					path: fullFilePath,
+					path: resolvedPath,
 					offset: currentOffset,
 					length: BigInt(file.length),
 				});
@@ -61,12 +75,23 @@ export class FileWriter {
 				currentOffset += BigInt(file.length);
 			}
 		} else {
+			// 🔒 SECURITY: Validate single-file path as well
+			const baseDir = path.resolve(outputDirPath);
 			const fullFilePath = path.join(outputDirPath, torrentName);
-			const handle = await fs.open(fullFilePath, "w+");
+			const resolvedPath = path.resolve(fullFilePath);
+
+			if (!resolvedPath.startsWith(baseDir)) {
+				throw new Error(
+					`Security Error: Path traversal detected in torrent file. ` +
+						`File name "${torrentName}" attempts to escape the output directory.`,
+				);
+			}
+
+			const handle = await fs.open(resolvedPath, "w+");
 
 			this.files.push({
 				handle,
-				path: fullFilePath,
+				path: resolvedPath,
 				offset: BigInt(0),
 				length: size(this.torrent),
 			});
