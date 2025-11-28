@@ -38,6 +38,9 @@ export class PeerManager {
 		private endgameManager: EndgameManager,
 		private uploadManager: UploadManager,
 	) {
+		// Provide upload manager with socket reference for choke/unchoke messages
+		this.uploadManager.setActiveSockets(this.activeSockets);
+
 		// Start connection manager loop
 		this.connectionInterval = setInterval(() => this.manageConnections(), 1000);
 

@@ -27,6 +27,7 @@ export class UploadManager {
 	private chokingInterval: NodeJS.Timer | null = null;
 	private optimisticInterval: NodeJS.Timer | null = null;
 	private currentOptimisticPeer: string | null = null;
+	private allSockets: Map<string, any> | null = null; // Reference to active sockets
 
 	// Configuration for maximum download speed
 	private readonly TIT_FOR_TAT_SLOTS = 4; // Peers who upload fastest to us
@@ -36,6 +37,13 @@ export class UploadManager {
 
 	constructor(private fileWriter: FileWriter) {
 		this.startChokingAlgorithm();
+	}
+
+	/**
+	 * Set reference to active sockets (called by PeerManager)
+	 */
+	setActiveSockets(sockets: Map<string, any>): void {
+		this.allSockets = sockets;
 	}
 
 	/**
@@ -132,15 +140,29 @@ export class UploadManager {
 		// Regular choking rounds every 10 seconds
 		this.chokingInterval = setInterval(() => {
 			this.performChokingRound();
+			// CRITICAL: Send choke/unchoke messages after each round
+			if (this.allSockets) {
+				this.sendChokeMessages(this.allSockets);
+			}
 		}, this.CHOKING_ROUND_INTERVAL);
 
 		// Optimistic unchoking every 30 seconds
 		this.optimisticInterval = setInterval(() => {
 			this.performOptimisticUnchoke();
+			// CRITICAL: Send choke/unchoke messages after optimistic unchoke
+			if (this.allSockets) {
+				this.sendChokeMessages(this.allSockets);
+			}
 		}, this.OPTIMISTIC_UNCHOKE_INTERVAL);
 
 		// Initial round
 		this.performChokingRound();
+		// Send initial choke/unchoke messages
+		setTimeout(() => {
+			if (this.allSockets) {
+				this.sendChokeMessages(this.allSockets);
+			}
+		}, 100); // Small delay to ensure sockets are registered
 	}
 
 	/**
