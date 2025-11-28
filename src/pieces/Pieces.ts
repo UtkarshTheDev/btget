@@ -10,11 +10,16 @@ export default class Pieces {
 	_torrent: Torrent;
 	private _verifier: PieceVerifier; // SHA-1 hash verifier
 	private _pieceBuffers: Map<number, Map<number, Buffer>>; // pieceIndex -> (blockOffset -> data)
+	private _onPieceVerified?: (pieceIndex: number) => void; // 🔒 SECURITY: Callback after verification
 
-	constructor(torrent: Torrent) {
+	constructor(
+		torrent: Torrent,
+		onPieceVerified?: (pieceIndex: number) => void,
+	) {
 		this._torrent = torrent;
 		this._verifier = new PieceVerifier(torrent);
 		this._pieceBuffers = new Map();
+		this._onPieceVerified = onPieceVerified; // 🔒 SECURITY: Store callback
 
 		const buildPiecesArray = (): boolean[][] => {
 			const nPieces = torrent.info.pieces ? torrent.info.pieces.length / 20 : 0;
@@ -124,6 +129,12 @@ export default class Pieces {
 			);
 			this.resetPiece(pieceIndex);
 			return false;
+		}
+
+		// 🔒 SECURITY FIX: Only broadcast HAVE after successful verification
+		// This prevents "swarm poisoning" by ensuring we never advertise corrupt data
+		if (this._onPieceVerified) {
+			this._onPieceVerified(pieceIndex);
 		}
 
 		return true;
