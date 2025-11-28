@@ -12,6 +12,7 @@ export class DistributedHashTable extends EventEmitter {
 	private socket: dgram.Socket;
 	private routingTable: RoutingTable;
 	private readonly localId: Buffer;
+	private isStopped = false; // Track if DHT has been stopped
 	private readonly BOOTSTRAP_NODES = [
 		{ host: "router.bittorrent.com", port: 6881 },
 		{ host: "dht.transmissionbt.com", port: 6881 },
@@ -188,8 +189,15 @@ export class DistributedHashTable extends EventEmitter {
 	 * Send UDP message
 	 */
 	private send(msg: any, host: string, port: number): void {
-		const buf = bencode.encode(msg);
-		this.socket.send(buf, port, host);
+		// Don't send if socket is closed
+		if (this.isStopped) return;
+
+		try {
+			const buf = bencode.encode(msg);
+			this.socket.send(buf, port, host);
+		} catch (err) {
+			// Silently ignore errors if socket is closed
+		}
 	}
 
 	/**
@@ -208,6 +216,13 @@ export class DistributedHashTable extends EventEmitter {
 	 * Stop DHT
 	 */
 	stop(): void {
-		this.socket.close();
+		if (this.isStopped) return;
+
+		this.isStopped = true;
+		try {
+			this.socket.close();
+		} catch (err) {
+			// Socket may already be closed
+		}
 	}
 }
