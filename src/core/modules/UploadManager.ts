@@ -86,18 +86,32 @@ export class UploadManager {
 		socket: ExtendedSocket,
 		request: RequestPayload,
 	): Promise<void> {
-		if (!socket.peerId) return;
+		console.log(
+			`📥 REQUEST from ${socket.peerId}: piece ${request.index}, begin ${request.begin}, length ${request.length}`,
+		);
+
+		if (!socket.peerId) {
+			console.log(`❌ No peerId on socket`);
+			return;
+		}
 
 		const stats = this.peerStats.get(socket.peerId);
 
 		// Only serve pieces to unchoked peers
 		if (!stats) {
+			console.log(`❌ No stats for peer ${socket.peerId} (not registered)`);
+			console.log(
+				`   Registered peers: ${Array.from(this.peerStats.keys()).join(", ")}`,
+			);
 			return;
 		}
 
 		if (stats.isChoked) {
+			console.log(`❌ Peer ${socket.peerId} is CHOKED - rejecting request`);
 			return;
 		}
+
+		console.log(`✅ Peer ${socket.peerId} is UNCHOKED - serving request`);
 
 		try {
 			// Read the requested block from disk
@@ -106,6 +120,8 @@ export class UploadManager {
 				request.begin,
 				request.length,
 			);
+
+			console.log(`✅ Read block successfully, sending ${block.length} bytes`);
 
 			// Send PIECE message
 			const pieceMessage = buildPiece({
@@ -121,6 +137,10 @@ export class UploadManager {
 			this.totalUploaded += block.length;
 			stats.bytesUploadedToPeer += block.length;
 
+			console.log(
+				`📤 UPLOADED ${block.length} bytes. Total: ${this.totalUploaded}`,
+			);
+
 			const now = Date.now();
 			const timeDelta = (now - stats.lastUploadTime) / 1000;
 			if (timeDelta > 0) {
@@ -129,7 +149,7 @@ export class UploadManager {
 				stats.lastUploadTime = now;
 			}
 		} catch (error) {
-			// Silently ignore errors (piece may not be downloaded yet)
+			console.error(`❌ Upload error for ${socket.peerId}: ${error}`);
 		}
 	}
 
@@ -155,14 +175,8 @@ export class UploadManager {
 			}
 		}, this.OPTIMISTIC_UNCHOKE_INTERVAL);
 
-		// Initial round
-		this.performChokingRound();
-		// Send initial choke/unchoke messages
-		setTimeout(() => {
-			if (this.allSockets) {
-				this.sendChokeMessages(this.allSockets);
-			}
-		}, 100); // Small delay to ensure sockets are registered
+		// Initial round (will run when first peer registers via registerPeer())
+		// No need for setTimeout - messages sent on peer registration
 	}
 
 	/**
@@ -249,20 +263,35 @@ export class UploadManager {
 	 * Send choke/unchoke messages to peers based on current state
 	 */
 	sendChokeMessages(allSockets: Map<string, ExtendedSocket>): void {
+		console.log(
+			`\n🔄 Sending choke/unchoke messages to ${this.peerStats.size} peers`,
+		);
+		let chokedCount = 0;
+		let unchokedCount = 0;
+
 		for (const [peerId, stats] of this.peerStats.entries()) {
 			const socket = allSockets.get(peerId);
-			if (!socket || socket.destroyed) continue;
+			if (!socket || socket.destroyed) {
+				console.log(`⚠️  Peer ${peerId} has no socket or destroyed`);
+				continue;
+			}
 
 			try {
 				if (stats.isChoked) {
 					socket.write(buildChoke());
+					chokedCount++;
+					console.log(`📤 Sent CHOKE to ${peerId}`);
 				} else {
 					socket.write(buildUnchoke());
+					unchokedCount++;
+					console.log(`📤 Sent UNCHOKE to ${peerId}`);
 				}
 			} catch (error) {
-				// Silently ignore write errors
+				console.error(`❌ Error sending message to ${peerId}: ${error}`);
 			}
 		}
+
+		console.log(`Summary: ${unchokedCount} unchoked, ${chokedCount} choked\n`);
 	}
 
 	/**
@@ -300,10 +329,22 @@ export class UploadManager {
 				isChoked: true,
 			});
 
-			// Trigger immediate choking round when first peer registers
-			// This ensures peers get unchoked quickly instead of waiting for the interval
-			if (this.peerStats.size === 1) {
-				this.performChokingRound();
+			console.error(
+				`✅ Registered peer ${peerId}. Total peers: ${this.peerStats.size}`,
+			);
+
+			// CRITICAL FIX: Trigger immediate choking round when peer registers
+			// This ensures new peers get evaluated and unchoked right away
+			// instead of waiting up to 10 seconds for the next interval
+			this.performChokingRound();
+
+			// CRITICAL FIX: Send choke/unchoke messages immediately
+			// This ensures peers receive UNCHOKE before they timeout
+			if (this.allSockets) {
+				console.error(
+					`🔄 Sending immediate choke/unchoke messages for new peer`,
+				);
+				this.sendChokeMessages(this.allSockets);
 			}
 		}
 	}
