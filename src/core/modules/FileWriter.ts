@@ -2,6 +2,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import type { Torrent, File } from "../../types/index";
 import { size } from "../../protocol/parser";
+import { LRUCache } from "./LRUCache";
 
 interface FileEntry {
 	handle: fs.FileHandle;
@@ -16,9 +17,13 @@ interface FileEntry {
 export class FileWriter {
 	private files: FileEntry[] = [];
 	private torrent: Torrent;
+	// LRU cache for piece blocks (Fix 3: Read Caching for Seeding)
+	private pieceCache: LRUCache<string, Buffer>;
 
 	constructor(torrent: Torrent) {
 		this.torrent = torrent;
+		// Cache up to 10 pieces (approximately 160MB for 16MB pieces)
+		this.pieceCache = new LRUCache<string, Buffer>(10);
 	}
 
 	/**
@@ -145,6 +150,14 @@ export class FileWriter {
 		begin: number,
 		length: number,
 	): Promise<Buffer> {
+		// Check cache first (Fix 3: Read Caching)
+		const cacheKey = `${pieceIndex}:${begin}:${length}`;
+		const cached = this.pieceCache.get(cacheKey);
+		if (cached) {
+			return cached;
+		}
+
+		// Cache miss - read from disk
 		const pieceLength = this.torrent.info["piece length"] as number;
 		const globalOffset =
 			BigInt(pieceIndex) * BigInt(pieceLength) + BigInt(begin);
@@ -180,6 +193,9 @@ export class FileWriter {
 					}
 				}
 			}
+
+			// Cache the result for future requests
+			this.pieceCache.set(cacheKey, result);
 
 			return result;
 		} catch (error) {
