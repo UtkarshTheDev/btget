@@ -104,6 +104,10 @@ export class PeerManager {
 		socket.lastData = Date.now();
 		socket.choked = true;
 		socket.activeRequests = new Map();
+		// Fix 2: Initialize adaptive pipelining fields
+		socket.maxPipeline = 10; // Start with default, will adapt based on RTT
+		socket.rollingLatency = undefined;
+		socket.requestTimestamps = new Map();
 
 		// Configure socket
 		socket.setKeepAlive(true, 30000);
@@ -158,6 +162,8 @@ export class PeerManager {
 					this.pieces,
 					this.queue,
 					this.activeSockets,
+					// Fix 1: Pass requestPieces callback for immediate request triggering
+					(s) => this.requestPieces(s),
 				);
 				messageBuffer = messageBuffer.slice(consumed);
 
@@ -225,6 +231,7 @@ export class PeerManager {
 	 */
 	requestPieces(socket: ExtendedSocket): void {
 		if (!socket.activeRequests) socket.activeRequests = new Map();
+		if (!socket.requestTimestamps) socket.requestTimestamps = new Map();
 
 		const maxPipeline = this.endgameManager.getMaxPipeline(socket);
 
@@ -246,6 +253,8 @@ export class PeerManager {
 						block: pieceBlock,
 						requestedAt: Date.now(),
 					});
+					// Fix 2: Track request timestamp for RTT measurement
+					socket.requestTimestamps.set(blockKey, Date.now());
 					this.pieces.addRequested(pieceBlock);
 					socket.pendingRequests = (socket.pendingRequests ?? 0) + 1;
 				} catch (error) {
