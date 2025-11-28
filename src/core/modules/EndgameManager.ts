@@ -21,6 +21,10 @@ export interface ExtendedSocket extends Socket {
 	downloaded?: number;
 	speed?: number;
 	lastMeasureTime?: number;
+	// Adaptive pipelining (Fix 2)
+	maxPipeline?: number; // Dynamic pipeline depth (2-50)
+	rollingLatency?: number; // Exponential moving average of RTT in ms
+	requestTimestamps?: Map<string, number>; // Track when each block was requested
 }
 
 /**
@@ -93,7 +97,8 @@ export class EndgameManager {
 	 * Get max pipeline depth for endgame mode
 	 */
 	getMaxPipeline(socket: ExtendedSocket): number {
-		return socket.endgameMode ? 5 : 10;
+		// Use socket's adaptive maxPipeline, fallback to defaults
+		return socket.maxPipeline ?? (socket.endgameMode ? 5 : 10);
 	}
 
 	/**
