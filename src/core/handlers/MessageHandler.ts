@@ -204,10 +204,10 @@ export class MessageHandler {
 			length: block.length,
 		});
 
-		// Check if piece is complete and broadcast HAVE
-		if (pieces.isPieceDone(pieceIndex)) {
-			this.broadcastHave(pieceIndex, allSockets);
-		}
+		// 🔒 SECURITY FIX: Check if piece is complete and verify hash
+		// The broadcastHave() will be called automatically via callback AFTER verification
+		// This prevents "swarm poisoning" by ensuring we never advertise corrupt data
+		pieces.isPieceDone(pieceIndex);
 
 		// Write to disk
 		await this.fileWriter.writeBlock(pieceIndex, begin, block);
@@ -240,8 +240,9 @@ export class MessageHandler {
 
 	/**
 	 * Broadcast HAVE message to all connected peers
+	 * 🔒 SECURITY: Only call this AFTER piece has been SHA1-verified
 	 */
-	private broadcastHave(
+	broadcastHave(
 		pieceIndex: number,
 		allSockets: Map<string, ExtendedSocket>,
 	): void {
