@@ -184,7 +184,7 @@ export default class Pieces {
 	isDone(): boolean {
 		// Check if all blocks received
 		const allBlocksReceived = this._received.every((blocks) =>
-			blocks.every((i) => i),
+			blocks?.every((i) => i),
 		);
 
 		if (!allBlocksReceived) return false;
@@ -193,7 +193,7 @@ export default class Pieces {
 		for (let i = 0; i < this._received.length; i++) {
 			if (
 				!this._verifier.isVerified(i) &&
-				this._received[i].every((block) => block)
+				this._received[i]?.every((block) => block)
 			) {
 				// Verify this piece
 				this.isPieceDone(i);

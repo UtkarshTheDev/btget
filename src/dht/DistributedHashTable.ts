@@ -1,7 +1,7 @@
 import dgram from "dgram";
 import crypto from "crypto";
 import bencode from "bencode";
-import { RoutingTable, type Node } from "./RoutingTable";
+import { RoutingTable } from "./RoutingTable";
 import { EventEmitter } from "events";
 
 interface DHTOptions {
@@ -21,7 +21,7 @@ export class DistributedHashTable extends EventEmitter {
 	constructor(options: DHTOptions = {}) {
 		super();
 		this.localId = crypto.randomBytes(20);
-		this.routingTable = new RoutingTable(this.localId);
+		this.routingTable = new RoutingTable();
 		this.socket = dgram.createSocket("udp4");
 
 		this.socket.on("message", (msg, rinfo) => this.handleMessage(msg, rinfo));

@@ -1,6 +1,6 @@
 import { Socket } from "net";
 import type { Peer, Torrent } from "../types/index";
-import type { PieceBlock } from "../queue/Queue";
+
 import type Pieces from "../pieces/Pieces";
 import type Queue from "../queue/Queue";
 import {
@@ -26,10 +26,9 @@ export class PeerManager {
 	private activePeers = 0;
 	private connectedPeers = 0;
 	private readonly MAX_CONNECTIONS = 50;
-	private totalPieces: number;
-	private connectionInterval: NodeJS.Timer;
-	private keepAliveInterval: NodeJS.Timer;
-	private healthCheckInterval: NodeJS.Timer;
+	private connectionInterval: NodeJS.Timeout;
+	private keepAliveInterval: NodeJS.Timeout;
+	private healthCheckInterval: NodeJS.Timeout;
 
 	constructor(
 		private torrent: Torrent,
@@ -39,8 +38,6 @@ export class PeerManager {
 		private endgameManager: EndgameManager,
 		private uploadManager: UploadManager,
 	) {
-		this.totalPieces = torrent.info.pieces.length / 20;
-
 		// Start connection manager loop
 		this.connectionInterval = setInterval(() => this.manageConnections(), 1000);
 
@@ -332,7 +329,7 @@ export class PeerManager {
 		const now = Date.now();
 		const STALL_THRESHOLD = 120000; // 2 minutes
 
-		this.activeSockets.forEach((socket, peerId) => {
+		this.activeSockets.forEach((socket) => {
 			if (socket.destroyed) return;
 
 			const timeSinceData = now - (socket.lastData ?? now);

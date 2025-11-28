@@ -1,10 +1,7 @@
 import * as crypto from 'crypto';
 import type { Torrent } from '../types/index';
 
-interface BlockData {
-  begin: number;
-  data: Buffer;
-}
+
 
 interface PieceBuffer {
   index: number;
@@ -159,7 +156,6 @@ export class PieceAssembler {
     
     // Create buffer and copy blocks in order
     const pieceBuffer = Buffer.alloc(piece.length);
-    let position = 0;
     
     for (const offset of offsets) {
       const blockData = piece.blocks.get(offset)!;

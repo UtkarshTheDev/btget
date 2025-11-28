@@ -174,7 +174,7 @@ export function getPeers(
  * TODO: Re-enable in Phase 5 when DHT is implemented
  */
 async function tryDHTFallback(
-	torrent: Torrent,
+	_torrent: Torrent,
 	callback: (peers: Peer[]) => void,
 ): Promise<void> {
 	// DHT temporarily disabled for Phase 1

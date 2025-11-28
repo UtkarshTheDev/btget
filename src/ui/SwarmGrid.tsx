@@ -1,9 +1,7 @@
-import React from "react";
 import { Box, Text } from "ink";
 import { SwarmGridProps } from "./types";
 
 export const SwarmGrid = ({
-	peers,
 	seeds,
 	leechers,
 	ratio,

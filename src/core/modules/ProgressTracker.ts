@@ -26,7 +26,7 @@ export class ProgressTracker {
 					barCompleteChar: "\u2588",
 					barIncompleteChar: "\u2591",
 					hideCursor: true,
-					formatValue: (v, options, type) => {
+					formatValue: (v, _options, type) => {
 						if (type === "value" || type === "total") {
 							const mb = v / (1024 * 1024);
 							return mb.toFixed(2) + " MB";

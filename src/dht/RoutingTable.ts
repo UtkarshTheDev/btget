@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+
 
 export interface Node {
 	id: Buffer;
@@ -10,11 +10,7 @@ export interface Node {
 export class RoutingTable {
 	private readonly k = 8; // K-bucket size
 	private readonly nodes: Node[] = [];
-	private readonly localId: Buffer;
-
-	constructor(localId: Buffer) {
-		this.localId = localId;
-	}
+	constructor() {}
 
 	/**
 	 * Add a node to the routing table
@@ -60,7 +56,7 @@ export class RoutingTable {
 	private distance(a: Buffer, b: Buffer): Buffer {
 		const res = Buffer.alloc(20);
 		for (let i = 0; i < 20; i++) {
-			res[i] = a[i] ^ b[i];
+			res[i] = a[i]! ^ b[i]!;
 		}
 		return res;
 	}
@@ -70,8 +66,8 @@ export class RoutingTable {
 	 */
 	private compareDistance(a: Buffer, b: Buffer): number {
 		for (let i = 0; i < 20; i++) {
-			if (a[i] !== b[i]) {
-				return a[i] < b[i] ? -1 : 1;
+			if (a[i]! !== b[i]!) {
+				return a[i]! < b[i]! ? -1 : 1;
 			}
 		}
 		return 0;

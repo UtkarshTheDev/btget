@@ -19,7 +19,7 @@ export class MessageHandler {
 	private totalPieces: number;
 
 	constructor(
-		private torrent: Torrent,
+		torrent: Torrent,
 		private fileWriter: FileWriter,
 		private endgameManager: EndgameManager,
 		private uploadManager: UploadManager,

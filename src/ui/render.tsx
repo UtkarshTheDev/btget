@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { render, Instance } from "ink";
+import { useState, useEffect } from "react";
+import { render } from "ink";
 import { Dashboard } from "./Dashboard";
 import { TorrentState } from "./types";
 import EventEmitter from "events";

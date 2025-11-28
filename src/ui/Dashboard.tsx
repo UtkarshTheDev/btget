@@ -1,4 +1,3 @@
-import React from "react";
 import { Box } from "ink";
 import { Header } from "./Header";
 import { Hero } from "./Hero";

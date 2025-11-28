@@ -1,23 +1,17 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 
 export const Header = () => {
-	const [time, setTime] = useState(new Date().toLocaleTimeString());
 	const [blink, setBlink] = useState(true);
 
 	useEffect(() => {
-		const timer = setInterval(() => {
-			setTime(new Date().toLocaleTimeString());
-		}, 1000);
 		const blinker = setInterval(() => {
 			setBlink((prev) => !prev);
 		}, 800);
 		return () => {
-			clearInterval(timer);
 			clearInterval(blinker);
 		};
 	}, []);
-
 	return (
 		<Box
 			borderStyle="double"
