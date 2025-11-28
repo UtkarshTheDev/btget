@@ -58,7 +58,12 @@ export async function downloadTorrent(
 		let downloadComplete = false;
 
 		// Setup pieces and queue
-		const pieces = new Pieces(torrent);
+		// 🔒 SECURITY FIX: Pass callback to broadcast HAVE only AFTER SHA1 verification
+		// This prevents "swarm poisoning" by ensuring we never advertise corrupt data
+		const pieces = new Pieces(torrent, (pieceIndex: number) => {
+			// Broadcast HAVE to all connected peers after successful verification
+			messageHandler.broadcastHave(pieceIndex, peerManager.getActiveSockets());
+		});
 		const queue = new Queue(torrent);
 
 		// Initialize queue with all pieces
