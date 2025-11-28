@@ -17,13 +17,16 @@ interface FileEntry {
 export class FileWriter {
 	private files: FileEntry[] = [];
 	private torrent: Torrent;
-	// LRU cache for piece blocks (Fix 3: Read Caching for Seeding)
+	// LRU cache for piece blocks (write-through caching for upload-during-download)
+	// 20MB limit prevents disk thrashing while enabling immediate tit-for-tat uploads
 	private pieceCache: LRUCache<string, Buffer>;
 
 	constructor(torrent: Torrent) {
 		this.torrent = torrent;
-		// Cache up to 10 pieces (approximately 160MB for 16MB pieces)
-		this.pieceCache = new LRUCache<string, Buffer>(10);
+		// Cache with 20MB limit for upload-during-download (write-through caching)
+		// Capacity: large number (won't hit count limit, only size limit)
+		// MaxSize: 20MB = 20 * 1024 * 1024 bytes
+		this.pieceCache = new LRUCache<string, Buffer>(1000, 20 * 1024 * 1024);
 	}
 
 	/**
@@ -117,6 +120,11 @@ export class FileWriter {
 					}
 				}
 			}
+
+			// CRITICAL: Cache block immediately after write (write-through caching)
+			// This enables uploads during active download for tit-for-tat
+			const cacheKey = `${pieceIndex}:${begin}:${blockData.length}`;
+			this.pieceCache.set(cacheKey, blockData);
 		} catch (error) {
 			console.error(`Error writing block: ${error}`);
 		}
