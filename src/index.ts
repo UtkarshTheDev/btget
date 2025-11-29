@@ -12,6 +12,7 @@ const SHORT_HASH_LENGTH = 8;
 const SPEED_HISTORY_SIZE = 30;
 const PERCENTAGE_MULTIPLIER = 100;
 const EXIT_DELAY_MS = 3000;
+const EMA_ALPHA = 0.1; // Smoothing factor for ETA calculation
 
 // Handle both direct file download and command-based usage
 const argv = hideBin(process.argv);
@@ -81,6 +82,7 @@ if (isDirectDownload) {
 
 				let currentSpeedHistory = Array(SPEED_HISTORY_SIZE).fill(0);
 				let currentUploadSpeedHistory = Array(SPEED_HISTORY_SIZE).fill(0);
+				let smoothedSpeed = 0;
 
 				// Store original console methods
 				const originalLog = console.log;
@@ -121,12 +123,21 @@ if (isDirectDownload) {
 					onProgress: debugMode
 						? undefined
 						: (data) => {
-								// Calculate ETA
+								// Calculate ETA using EMA
 								const remaining = Number(totalSize) - data.downloaded;
-								const speedBytes = data.downloadSpeed; // Already in bytes/sec
+								const currentSpeed = data.downloadSpeed || 0; // Handle undefined/NaN
+
+								// Apply Exponential Moving Average
+								if (smoothedSpeed === 0) {
+									smoothedSpeed = currentSpeed;
+								} else {
+									smoothedSpeed =
+										EMA_ALPHA * currentSpeed + (1 - EMA_ALPHA) * smoothedSpeed;
+								}
+
 								let eta = "--";
-								if (speedBytes > 0) {
-									const seconds = remaining / speedBytes;
+								if (smoothedSpeed > 0) {
+									const seconds = remaining / smoothedSpeed;
 									const mins = Math.floor(seconds / 60);
 									const secs = Math.floor(seconds % 60);
 									eta = `${mins}m ${secs}s`;
@@ -246,6 +257,7 @@ if (isDirectDownload) {
 
 					let currentSpeedHistory = Array(SPEED_HISTORY_SIZE).fill(0);
 					let currentUploadSpeedHistory = Array(SPEED_HISTORY_SIZE).fill(0);
+					let smoothedSpeed = 0;
 
 					// Store original console methods
 					const originalLog = console.log;
@@ -286,12 +298,22 @@ if (isDirectDownload) {
 						onProgress: debugMode
 							? undefined
 							: (data) => {
-									// Calculate ETA
+									// Calculate ETA using EMA
 									const remaining = Number(totalSize) - data.downloaded;
-									const speedBytes = data.downloadSpeed; // Already in bytes/sec
+									const currentSpeed = data.downloadSpeed || 0; // Handle undefined/NaN
+
+									// Apply Exponential Moving Average
+									if (smoothedSpeed === 0) {
+										smoothedSpeed = currentSpeed;
+									} else {
+										smoothedSpeed =
+											EMA_ALPHA * currentSpeed +
+											(1 - EMA_ALPHA) * smoothedSpeed;
+									}
+
 									let eta = "--";
-									if (speedBytes > 0) {
-										const seconds = remaining / speedBytes;
+									if (smoothedSpeed > 0) {
+										const seconds = remaining / smoothedSpeed;
 										const mins = Math.floor(seconds / 60);
 										const secs = Math.floor(seconds % 60);
 										eta = `${mins}m ${secs}s`;
