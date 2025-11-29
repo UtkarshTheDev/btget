@@ -1,18 +1,30 @@
 import * as fs from "fs/promises";
-import type { Peer, Torrent } from "../types/index";
-import { getPeers } from "../tracker/tracker";
-import Queue from "../queue/Queue";
+import { DistributedHashTable } from "../dht/DistributedHashTable";
+import { PeerManager } from "../peers/PeerManager";
 import Pieces from "../pieces/Pieces";
-import { size } from "../protocol/parser";
-import { FileWriter } from "./modules/FileWriter";
-import { EndgameManager } from "./modules/EndgameManager";
+import { infoHash, size } from "../protocol/parser";
+import Queue from "../queue/Queue";
+import { getPeers } from "../tracker/tracker";
+import type { Peer, Torrent } from "../types/index";
 import { MessageHandler } from "./handlers/MessageHandler";
+import { EndgameManager } from "./modules/EndgameManager";
+import { FileWriter } from "./modules/FileWriter";
 import { ProgressTracker } from "./modules/ProgressTracker";
 import { TimeoutManager } from "./modules/TimeoutManager";
-import { PeerManager } from "../peers/PeerManager";
-import { DistributedHashTable } from "../dht/DistributedHashTable";
-import { infoHash } from "../protocol/parser";
 import { UploadManager } from "./modules/UploadManager";
+
+/**
+ * Download a torrent file
+ */
+export interface ProgressData {
+	downloaded: number;
+	uploaded: number;
+	downloadSpeed: number;
+	uploadSpeed: number;
+	peers: number;
+	seeds: number;
+	leechers: number;
+}
 
 /**
  * Download a torrent file
@@ -20,17 +32,27 @@ import { UploadManager } from "./modules/UploadManager";
 export async function downloadTorrent(
 	torrent: Torrent,
 	outputDirPath: string,
-	options: { dhtOnly?: boolean; onProgress?: (data: any) => void } = {},
+	options: {
+		dhtOnly?: boolean;
+		onProgress?: (data: ProgressData) => void;
+	} = {},
 ): Promise<void> {
 	const torrentName = torrent.info.name.toString("utf8");
 	const totalSize = size(torrent);
 	const totalPieces = torrent.info.pieces.length / 20;
+	const PROGRESS_INTERVAL_MS = 1000;
+	const PERCENTAGE_MULTIPLIER = 100;
+
+	const BYTES_PER_MB = 1024 * 1024;
+	const MS_PER_MINUTE = 60 * 1000;
+	const STALL_TIME_MS = 5 * 60 * 1000; // 5 minutes
+	const MIN_SPEED_BYTES_PER_SEC = 1024; // 1 KB/s
+	const MIN_SPEED_DURATION_MS = 600000; // 10 minutes
+	const MAX_TOTAL_TIME_MS = 86400000; // 24 hours
 
 	if (!options.onProgress) {
 		console.log(`🚀 Starting reliable download: ${torrentName}`);
-		console.log(
-			`📦 Size: ${(Number(totalSize) / (1024 * 1024)).toFixed(2)} MB`,
-		);
+		console.log(`📦 Size: ${(Number(totalSize) / BYTES_PER_MB).toFixed(2)} MB`);
 		console.log(`🧩 Initialized ${totalPieces} pieces`);
 	}
 
@@ -90,14 +112,14 @@ export async function downloadTorrent(
 		);
 
 		// Configure progress-based timeout (replaces fixed 15-minute timeout)
-		const fileSizeMB = Number(totalSize) / (1024 * 1024);
+		const fileSizeMB = Number(totalSize) / BYTES_PER_MB;
 		const timeoutConfig = {
-			stallTimeMs: 5 * 60 * 1000, // 5 minutes with no progress = stall
-			minSpeedBytesPerSec: 1024, // 1 KB/s minimum speed
-			minSpeedDurationMs: 10 * 60 * 1000, // 10 minutes below minimum speed
+			stallTimeMs: STALL_TIME_MS, // 5 minutes with no progress = stall
+			minSpeedBytesPerSec: MIN_SPEED_BYTES_PER_SEC, // 1 KB/s minimum speed
+			minSpeedDurationMs: MIN_SPEED_DURATION_MS, // 10 minutes below minimum speed
 			maxTotalTimeMs: Math.max(
-				24 * 60 * 60 * 1000, // 24 hours absolute maximum
-				fileSizeMB * 60 * 1000, // Or 1 minute per MB, whichever is larger
+				MAX_TOTAL_TIME_MS, // 24 hours absolute maximum
+				fileSizeMB * MS_PER_MINUTE, // Or 1 minute per MB, whichever is larger
 			),
 		};
 
@@ -111,7 +133,8 @@ export async function downloadTorrent(
 					downloadComplete = true;
 					progressTracker.stop();
 					const progress =
-						(messageHandler.getTotalDownloaded() / Number(totalSize)) * 100;
+						(messageHandler.getTotalDownloaded() / Number(totalSize)) *
+						PERCENTAGE_MULTIPLIER;
 					if (!options.onProgress)
 						console.log(`\n❌ Download stalled at ${progress.toFixed(1)}%`);
 					fileWriter
@@ -136,7 +159,7 @@ export async function downloadTorrent(
 
 			// Use verified pieces for accurate progress (prevents exceeding 100%)
 			const verifiedPieces = pieces.getVerifiedCount();
-			const progress = (verifiedPieces / totalPieces) * 100;
+			const progress = (verifiedPieces / totalPieces) * PERCENTAGE_MULTIPLIER;
 
 			// Update progress
 			progressTracker.update(downloaded, connectedPeers, {
@@ -182,7 +205,7 @@ export async function downloadTorrent(
 					resolve();
 				});
 			}
-		}, 1000);
+		}, PROGRESS_INTERVAL_MS);
 
 		// Start peer discovery
 		const discoverySource = options.dhtOnly ? "DHT Only" : "Trackers and DHT";

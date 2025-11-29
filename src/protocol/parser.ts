@@ -1,7 +1,7 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
 import bencode from "bencode";
-import crypto from "crypto";
-import fs from "fs";
-import type { Torrent, Info } from "../types/index";
+import type { Info, Torrent } from "../types/index";
 
 export function open(filepath: string): Torrent {
 	const fileData = fs.readFileSync(filepath);
@@ -15,8 +15,8 @@ export function open(filepath: string): Torrent {
 
 	if (decodedData["announce-list"]) {
 		decodedData["announce-list"] = decodedData["announce-list"].map(
-			(tier: any) => {
-				return tier.map((url: any) => {
+			(tier: unknown) => {
+				return (tier as unknown[]).map((url: unknown) => {
 					if (Buffer.isBuffer(url) || url instanceof Uint8Array) {
 						return Buffer.from(url).toString("utf8");
 					}
@@ -27,17 +27,19 @@ export function open(filepath: string): Torrent {
 	}
 
 	// Ensure info.name is properly converted to Buffer for consistent handling
-	if (decodedData.info && decodedData.info.name) {
+	if (decodedData.info?.name) {
 		if (!Buffer.isBuffer(decodedData.info.name)) {
 			decodedData.info.name = Buffer.from(decodedData.info.name);
 		}
 	}
 
 	// Fix file path encoding for multi-file torrents
-	if (decodedData.info && decodedData.info.files) {
+	if (decodedData.info?.files) {
+		// biome-ignore lint/suspicious/noExplicitAny: complex bencode structure
 		decodedData.info.files = decodedData.info.files.map((file: any) => {
 			if (file.path) {
 				// Convert path components to proper UTF-8 strings
+				// biome-ignore lint/suspicious/noExplicitAny: complex bencode structure
 				file.path = file.path.map((pathComponent: any) => {
 					if (Buffer.isBuffer(pathComponent)) {
 						return pathComponent;
@@ -72,7 +74,7 @@ export function infoHash(torrent: Torrent): Buffer {
 	return crypto.createHash("sha1").update(info).digest();
 }
 
-export const BLOCK_LEN = 2 ** 14; // 16384 bytes
+export const BLOCK_LEN = 16384; // 2 ** 14
 
 export function pieceLen(torrent: Torrent, pieceIndex: number): number {
 	const totalLength = size(torrent);

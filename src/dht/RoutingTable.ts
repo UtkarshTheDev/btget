@@ -1,5 +1,3 @@
-
-
 export interface Node {
 	id: Buffer;
 	ip: string;
@@ -9,8 +7,9 @@ export interface Node {
 
 export class RoutingTable {
 	private readonly k = 8; // K-bucket size
+	private readonly MAX_NODES = 1000;
+	private readonly ID_LENGTH = 20;
 	private readonly nodes: Node[] = [];
-	constructor() {}
 
 	/**
 	 * Add a node to the routing table
@@ -29,7 +28,7 @@ export class RoutingTable {
 		}
 
 		// Limit total nodes to avoid memory issues (e.g. 1000)
-		if (this.nodes.length > 1000) {
+		if (this.nodes.length > this.MAX_NODES) {
 			// Remove oldest seen
 			this.nodes.sort((a, b) => b.lastSeen - a.lastSeen);
 			this.nodes.pop();
@@ -54,9 +53,9 @@ export class RoutingTable {
 	 * Calculate XOR distance between two IDs
 	 */
 	private distance(a: Buffer, b: Buffer): Buffer {
-		const res = Buffer.alloc(20);
-		for (let i = 0; i < 20; i++) {
-			res[i] = a[i]! ^ b[i]!;
+		const res = Buffer.alloc(this.ID_LENGTH);
+		for (let i = 0; i < this.ID_LENGTH; i++) {
+			res[i] = (a[i] ?? 0) ^ (b[i] ?? 0);
 		}
 		return res;
 	}
@@ -65,9 +64,11 @@ export class RoutingTable {
 	 * Compare two distance buffers
 	 */
 	private compareDistance(a: Buffer, b: Buffer): number {
-		for (let i = 0; i < 20; i++) {
-			if (a[i]! !== b[i]!) {
-				return a[i]! < b[i]! ? -1 : 1;
+		for (let i = 0; i < this.ID_LENGTH; i++) {
+			const byteA = a[i] ?? 0;
+			const byteB = b[i] ?? 0;
+			if (byteA !== byteB) {
+				return byteA < byteB ? -1 : 1;
 			}
 		}
 		return 0;

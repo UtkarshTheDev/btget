@@ -1,10 +1,10 @@
 import type Pieces from "../../pieces/Pieces";
+import { buildHave } from "../../protocol/messages";
 import type Queue from "../../queue/Queue";
 import type { Torrent } from "../../types/index";
-import { FileWriter } from "../modules/FileWriter";
-import { EndgameManager, type ExtendedSocket } from "../modules/EndgameManager";
-import { UploadManager } from "../modules/UploadManager";
-import { buildHave } from "../../protocol/messages";
+import type { EndgameManager, ExtendedSocket } from "../modules/EndgameManager";
+import type { FileWriter } from "../modules/FileWriter";
+import type { UploadManager } from "../modules/UploadManager";
 
 // Helper to create unique block identifier
 function blockId(block: { index: number; begin: number }): string {
@@ -18,13 +18,36 @@ export class MessageHandler {
 	private totalDownloaded = 0;
 	private totalPieces: number;
 
+	// Constants for message IDs
+	private readonly MSG_CHOKE = 0;
+	private readonly MSG_UNCHOKE = 1;
+	private readonly MSG_HAVE = 4;
+	private readonly MSG_BITFIELD = 5;
+	private readonly MSG_REQUEST = 6;
+	private readonly MSG_PIECE = 7;
+	private readonly MSG_LENGTH_BYTES = 4;
+	private readonly MSG_ID_BYTES = 1;
+	private readonly MSG_INDEX_OFFSET = 1;
+	private readonly MSG_BEGIN_OFFSET = 5;
+	private readonly MSG_LENGTH_OFFSET = 9;
+	private readonly HASH_LENGTH = 20;
+	private readonly REQUEST_ARGS_COUNT = 3;
+	private readonly EMA_ALPHA = 0.3;
+	private readonly EMA_DECAY = 0.7;
+	private readonly RTT_FAST_THRESHOLD = 500;
+	private readonly RTT_SLOW_THRESHOLD = 1000;
+	private readonly MAX_PIPELINE = 50;
+	private readonly MIN_PIPELINE = 2;
+	private readonly MS_PER_SEC = 1000;
+	private readonly BITS_PER_BYTE = 8;
+
 	constructor(
 		torrent: Torrent,
 		private fileWriter: FileWriter,
 		private endgameManager: EndgameManager,
 		private uploadManager: UploadManager,
 	) {
-		this.totalPieces = torrent.info.pieces.length / 20;
+		this.totalPieces = torrent.info.pieces.length / this.HASH_LENGTH;
 	}
 
 	/**
@@ -40,23 +63,26 @@ export class MessageHandler {
 	): number {
 		let offset = 0;
 
-		while (offset + 4 <= buffer.length) {
+		while (offset + this.MSG_LENGTH_BYTES <= buffer.length) {
 			const messageLength = buffer.readUInt32BE(offset);
 
 			if (messageLength === 0) {
 				// Keep-alive
-				offset += 4;
+				offset += this.MSG_LENGTH_BYTES;
 				continue;
 			}
 
-			if (offset + 4 + messageLength > buffer.length) {
+			if (offset + this.MSG_LENGTH_BYTES + messageLength > buffer.length) {
 				// Incomplete message, wait for more data
 				break;
 			}
 
-			const messageId = buffer[offset + 4];
+			const messageId = buffer[offset + this.MSG_LENGTH_BYTES];
 			if (messageId === undefined) break; // Safety check
-			const messageData = buffer.slice(offset + 4, offset + 4 + messageLength);
+			const messageData = buffer.slice(
+				offset + this.MSG_LENGTH_BYTES,
+				offset + this.MSG_LENGTH_BYTES + messageLength,
+			);
 
 			try {
 				this.handleMessage(
@@ -68,11 +94,11 @@ export class MessageHandler {
 					allSockets,
 					requestMorePieces,
 				);
-			} catch (error) {
+			} catch (_error) {
 				// Silently ignore message processing errors
 			}
 
-			offset += 4 + messageLength;
+			offset += this.MSG_LENGTH_BYTES + messageLength;
 		}
 
 		return offset; // Return number of bytes consumed
@@ -91,18 +117,18 @@ export class MessageHandler {
 		requestMorePieces?: (socket: ExtendedSocket) => void,
 	): void {
 		switch (messageId) {
-			case 0: // choke
+			case this.MSG_CHOKE: // choke
 				socket.choked = true;
 				socket.pendingRequests = 0;
 				break;
 
-			case 1: // unchoke
+			case this.MSG_UNCHOKE: // unchoke
 				socket.choked = false;
 				break;
 
-			case 4: // have
-				if (data.length >= 5) {
-					const pieceIndex = data.readUInt32BE(1);
+			case this.MSG_HAVE: // have
+				if (data.length >= this.MSG_ID_BYTES + this.MSG_LENGTH_BYTES) {
+					const pieceIndex = data.readUInt32BE(this.MSG_INDEX_OFFSET);
 					if (!socket.availablePieces) socket.availablePieces = new Set();
 					socket.availablePieces.add(pieceIndex);
 					if (socket.peerId) {
@@ -111,26 +137,29 @@ export class MessageHandler {
 				}
 				break;
 
-			case 5: // bitfield
-				socket.bitfield = data.slice(1);
+			case this.MSG_BITFIELD: // bitfield
+				socket.bitfield = data.slice(this.MSG_ID_BYTES);
 				socket.availablePieces = this.parseBitfield(socket.bitfield);
 				if (socket.peerId) {
 					queue.updatePeerPieces(socket.peerId, socket.availablePieces);
 				}
 				break;
 
-			case 6: // request
-				if (data.length >= 13) {
+			case this.MSG_REQUEST: // request
+				if (
+					data.length >=
+					this.MSG_ID_BYTES + this.MSG_LENGTH_BYTES * this.REQUEST_ARGS_COUNT
+				) {
 					const request = {
-						index: data.readUInt32BE(1),
-						begin: data.readUInt32BE(5),
-						length: data.readUInt32BE(9),
+						index: data.readUInt32BE(this.MSG_INDEX_OFFSET),
+						begin: data.readUInt32BE(this.MSG_BEGIN_OFFSET),
+						length: data.readUInt32BE(this.MSG_LENGTH_OFFSET),
 					};
 					this.uploadManager.handlePeerRequest(socket, request);
 				}
 				break;
 
-			case 7: // piece
+			case this.MSG_PIECE: // piece
 				this.handlePiece(socket, data, pieces, allSockets, requestMorePieces);
 				break;
 		}
@@ -146,34 +175,42 @@ export class MessageHandler {
 		allSockets: Map<string, ExtendedSocket>,
 		requestMorePieces?: (socket: ExtendedSocket) => void,
 	): Promise<void> {
-		const pieceIndex = data.readUInt32BE(1);
-		const begin = data.readUInt32BE(5);
-		const block = data.slice(9);
+		const pieceIndex = data.readUInt32BE(this.MSG_INDEX_OFFSET);
+		const begin = data.readUInt32BE(this.MSG_BEGIN_OFFSET);
+		const block = data.slice(this.MSG_LENGTH_OFFSET);
 
 		const blockKey = blockId({ index: pieceIndex, begin });
 
 		// Fix 2: Measure RTT for adaptive pipelining
 		const now = Date.now();
-		if (socket.requestTimestamps && socket.requestTimestamps.has(blockKey)) {
-			const requestTime = socket.requestTimestamps.get(blockKey)!;
+		if (socket.requestTimestamps?.has(blockKey)) {
+			const requestTime = socket.requestTimestamps.get(blockKey);
+			if (requestTime === undefined) return;
 			const rtt = now - requestTime;
 
 			// Update rolling latency (exponential moving average, alpha = 0.3)
 			if (socket.rollingLatency === undefined) {
 				socket.rollingLatency = rtt;
 			} else {
-				socket.rollingLatency = socket.rollingLatency * 0.7 + rtt * 0.3;
+				socket.rollingLatency =
+					socket.rollingLatency * this.EMA_DECAY + rtt * this.EMA_ALPHA;
 			}
 
 			// Adaptive pipeline scaling based on RTT
 			if (!socket.maxPipeline) socket.maxPipeline = 10; // Initialize
 
-			if (rtt < 500) {
+			if (rtt < this.RTT_FAST_THRESHOLD) {
 				// Fast peer - increase pipeline (cap at 50)
-				socket.maxPipeline = Math.min(50, socket.maxPipeline + 1);
-			} else if (rtt > 1000) {
+				socket.maxPipeline = Math.min(
+					this.MAX_PIPELINE,
+					socket.maxPipeline + 1,
+				);
+			} else if (rtt > this.RTT_SLOW_THRESHOLD) {
 				// Slow peer - decrease pipeline (floor at 2)
-				socket.maxPipeline = Math.max(2, socket.maxPipeline - 1);
+				socket.maxPipeline = Math.max(
+					this.MIN_PIPELINE,
+					socket.maxPipeline - 1,
+				);
 			}
 
 			// Clean up timestamp
@@ -222,7 +259,7 @@ export class MessageHandler {
 
 		// Update peer stats
 		socket.downloaded = (socket.downloaded ?? 0) + block.length;
-		const duration = (now - (socket.lastMeasureTime ?? now)) / 1000;
+		const duration = (now - (socket.lastMeasureTime ?? now)) / this.MS_PER_SEC;
 		if (duration > 0) {
 			// Simple speed calculation (bytes/sec) - exponential moving average could be better but this is simple
 			const currentSpeed = block.length / duration;
@@ -251,7 +288,7 @@ export class MessageHandler {
 			if (!socket.destroyed && socket.writable) {
 				try {
 					socket.write(haveMessage);
-				} catch (error) {
+				} catch (_error) {
 					// Silently ignore write errors
 				}
 			}
@@ -266,10 +303,10 @@ export class MessageHandler {
 		for (let i = 0; i < bitfield.length; i++) {
 			const byte = bitfield[i];
 			if (byte === undefined) continue;
-			for (let bit = 0; bit < 8; bit++) {
-				const pieceIndex = i * 8 + bit;
+			for (let bit = 0; bit < this.BITS_PER_BYTE; bit++) {
+				const pieceIndex = i * this.BITS_PER_BYTE + bit;
 				if (pieceIndex >= this.totalPieces) break;
-				if (byte & (1 << (7 - bit))) {
+				if (byte & (1 << (this.BITS_PER_BYTE - 1 - bit))) {
 					pieces.add(pieceIndex);
 				}
 			}

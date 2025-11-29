@@ -1,7 +1,7 @@
-import * as fs from "fs/promises";
-import * as path from "path";
-import type { Torrent, File } from "../../types/index";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { size } from "../../protocol/parser";
+import type { File, Torrent } from "../../types/index";
 import { LRUCache } from "./LRUCache";
 
 interface FileEntry {
@@ -21,12 +21,19 @@ export class FileWriter {
 	// 20MB limit prevents disk thrashing while enabling immediate tit-for-tat uploads
 	private pieceCache: LRUCache<string, Buffer>;
 
+	private static readonly CACHE_MAX_ITEMS = 1000;
+	// biome-ignore lint/style/noMagicNumbers: Cache size calculation
+	private static readonly CACHE_MAX_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+
 	constructor(torrent: Torrent) {
 		this.torrent = torrent;
 		// Cache with 20MB limit for upload-during-download (write-through caching)
 		// Capacity: large number (won't hit count limit, only size limit)
 		// MaxSize: 20MB = 20 * 1024 * 1024 bytes
-		this.pieceCache = new LRUCache<string, Buffer>(1000, 20 * 1024 * 1024);
+		this.pieceCache = new LRUCache<string, Buffer>(
+			FileWriter.CACHE_MAX_ITEMS,
+			FileWriter.CACHE_MAX_SIZE_BYTES,
+		);
 	}
 
 	/**
@@ -162,7 +169,7 @@ export class FileWriter {
 		for (const file of this.files) {
 			try {
 				await file.handle.close();
-			} catch (e) {
+			} catch (_e) {
 				// Ignore close errors
 			}
 		}

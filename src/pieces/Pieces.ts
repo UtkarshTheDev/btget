@@ -1,10 +1,12 @@
-import { BLOCK_LEN, blocksPerPiece } from "../protocol/parser";
-import type { Torrent } from "../types/index";
-import type { PieceBlock } from "../queue/Queue";
 import type { PiecePayload } from "../protocol/messages";
+import { BLOCK_LEN, blocksPerPiece } from "../protocol/parser";
+import type { PieceBlock } from "../queue/Queue";
+import type { Torrent } from "../types/index";
 import { PieceVerifier } from "./PieceVerifier";
 
 export default class Pieces {
+	private readonly HASH_LENGTH = 20;
+	private readonly PERCENTAGE_MULTIPLIER = 100;
 	_requested: boolean[][];
 	_received: boolean[][];
 	_torrent: Torrent;
@@ -22,7 +24,9 @@ export default class Pieces {
 		this._onPieceVerified = onPieceVerified; // 🔒 SECURITY: Store callback
 
 		const buildPiecesArray = (): boolean[][] => {
-			const nPieces = torrent.info.pieces ? torrent.info.pieces.length / 20 : 0;
+			const nPieces = torrent.info.pieces
+				? torrent.info.pieces.length / this.HASH_LENGTH
+				: 0;
 			if (nPieces === 0) return [];
 
 			const arr: boolean[][] = new Array(nPieces)
@@ -149,7 +153,9 @@ export default class Pieces {
 
 		// Sort blocks by offset and concatenate
 		const offsets = Array.from(pieceBuffer.keys()).sort((a, b) => a - b);
-		const blocks = offsets.map((offset) => pieceBuffer.get(offset)!);
+		const blocks = offsets.map(
+			(offset) => pieceBuffer.get(offset) || Buffer.alloc(0),
+		);
 
 		return Buffer.concat(blocks);
 	}
@@ -219,7 +225,9 @@ export default class Pieces {
 	getProgress(): number {
 		const totalPieces = this._verifier.getTotalPieces();
 		const verifiedPieces = this._verifier.getVerifiedCount();
-		return totalPieces > 0 ? (verifiedPieces / totalPieces) * 100 : 0;
+		return totalPieces > 0
+			? (verifiedPieces / totalPieces) * this.PERCENTAGE_MULTIPLIER
+			: 0;
 	}
 
 	// Remove requested status (for timeout recovery)

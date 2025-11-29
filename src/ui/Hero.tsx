@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { HeroProps } from "./types";
+import type { HeroProps } from "./types";
 
 export const Hero = ({
 	filename,
@@ -11,10 +11,14 @@ export const Hero = ({
 	eta,
 	status,
 }: HeroProps) => {
+	const KB_THRESHOLD = 1024;
+	const PROGRESS_BAR_WIDTH = 60;
+	const PERCENTAGE_DIVISOR = 100;
+
 	const formatSpeed = (speedKb: number) => {
 		if (!speedKb || speedKb === 0) return "0 KB/s";
-		if (speedKb >= 1024) {
-			return `${(speedKb / 1024).toFixed(1)} MB/s`;
+		if (speedKb >= KB_THRESHOLD) {
+			return `${(speedKb / KB_THRESHOLD).toFixed(1)} MB/s`;
 		}
 		return `${speedKb.toFixed(1)} KB/s`;
 	};
@@ -58,10 +62,15 @@ export const Hero = ({
 			{/* Progress Bar */}
 			<Box justifyContent="center" marginY={1}>
 				<Text color="cyan">
-					{"█".repeat(Math.floor((progress / 100) * 60))}
+					{"█".repeat(
+						Math.floor((progress / PERCENTAGE_DIVISOR) * PROGRESS_BAR_WIDTH),
+					)}
 				</Text>
 				<Text dimColor>
-					{"░".repeat(60 - Math.floor((progress / 100) * 60))}
+					{"░".repeat(
+						PROGRESS_BAR_WIDTH -
+							Math.floor((progress / PERCENTAGE_DIVISOR) * PROGRESS_BAR_WIDTH),
+					)}
 				</Text>
 			</Box>
 		</Box>

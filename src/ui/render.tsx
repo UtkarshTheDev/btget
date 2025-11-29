@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import EventEmitter from "node:events";
 import { render } from "ink";
+import { useEffect, useState } from "react";
 import { Dashboard } from "./Dashboard";
-import { TorrentState } from "./types";
-import EventEmitter from "events";
+import type { TorrentState } from "./types";
 
 const updateEmitter = new EventEmitter();
 

@@ -7,7 +7,14 @@ export class ProgressTracker {
 	private progressBar: cliProgress.SingleBar | null = null;
 	private lastProgress = 0;
 	private stallCount = 0;
+	// biome-ignore lint/suspicious/noExplicitAny: Callback signature mismatch with download.ts
 	private onProgress: ((data: any) => void) | null = null;
+
+	// biome-ignore lint/style/noMagicNumbers: Bytes conversion
+	private readonly MB_BYTES = 1024 * 1024;
+	private readonly KB_BYTES = 1024;
+	private readonly STALL_THRESHOLD = 5;
+	private readonly MS_PER_SEC = 1000;
 
 	/**
 	 * Initialize progress bar
@@ -15,6 +22,7 @@ export class ProgressTracker {
 	initialize(
 		torrentName: string,
 		totalSize: bigint,
+		// biome-ignore lint/suspicious/noExplicitAny: Callback signature mismatch with download.ts
 		onProgress?: (data: any) => void,
 	): void {
 		this.onProgress = onProgress || null;
@@ -28,8 +36,8 @@ export class ProgressTracker {
 					hideCursor: true,
 					formatValue: (v, _options, type) => {
 						if (type === "value" || type === "total") {
-							const mb = v / (1024 * 1024);
-							return mb.toFixed(2) + " MB";
+							const mb = v / this.MB_BYTES;
+							return `${mb.toFixed(2)} MB`;
 						}
 						return v.toString();
 					},
@@ -58,12 +66,12 @@ export class ProgressTracker {
 		stats?: { seeds: number; leechers: number },
 	): void {
 		const now = Date.now();
-		const timeDiff = (now - this.lastTime) / 1000; // Seconds
+		const timeDiff = (now - this.lastTime) / this.MS_PER_SEC; // Seconds
 
 		let speed = 0;
 		if (timeDiff > 0) {
 			const bytesDiff = downloaded - this.lastProgress;
-			speed = bytesDiff / 1024 / timeDiff; // KB/s
+			speed = bytesDiff / this.KB_BYTES / timeDiff; // KB/s
 		}
 
 		// Update state for next calculation
@@ -98,7 +106,7 @@ export class ProgressTracker {
 	): boolean {
 		if (downloaded === this.lastProgress && connectedPeers > 0) {
 			this.stallCount++;
-			if (this.stallCount >= 5) {
+			if (this.stallCount >= this.STALL_THRESHOLD) {
 				onStall();
 				this.stallCount = 0;
 				return true;

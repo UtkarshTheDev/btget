@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { SwarmGridProps } from "./types";
+import type { SwarmGridProps } from "./types";
 
 export const SwarmGrid = ({
 	seeds,
@@ -21,7 +21,7 @@ export const SwarmGrid = ({
 			{/* Left Column: Swarm Origin */}
 			<Box width="50%" flexDirection="column" paddingX={1} borderRight={false}>
 				<Text bold>⛁ SWARM ORIGIN</Text>
-				<Box flexDirection="row" flexWrap="wrap" marginTop={1} gap={4}>
+				<Box flexDirection="row" flexWrap="wrap" marginTop={2} gap={4}>
 					<Text>
 						🇺🇸 US: <Text color="cyan">▣▣▣</Text>
 					</Text>
@@ -51,7 +51,7 @@ export const SwarmGrid = ({
 			{/* Right Column: Swarm Stats */}
 			<Box width="50%" flexDirection="column" paddingX={1}>
 				<Text bold>⛁ SWARM STATS</Text>
-				<Box flexDirection="row" flexWrap="wrap" marginTop={1} gap={4}>
+				<Box flexDirection="row" flexWrap="wrap" marginTop={2} gap={4}>
 					<Text>🌱 Seeds: {seeds}</Text>
 					<Text>🐌 Leechers: {leechers}</Text>
 					<Text>📤 Up: {uploaded}</Text>

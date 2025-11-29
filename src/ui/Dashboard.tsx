@@ -2,7 +2,7 @@ import { Box } from "ink";
 import { Header } from "./Header";
 import { Hero } from "./Hero";
 import { SwarmGrid } from "./SwarmGrid";
-import { TorrentState } from "./types";
+import type { TorrentState } from "./types";
 
 // Helper function to format bytes
 const formatBytes = (bytes: number): string => {
@@ -10,7 +10,7 @@ const formatBytes = (bytes: number): string => {
 	const k = 1024;
 	const sizes = ["B", "KB", "MB", "GB", "TB"];
 	const i = Math.floor(Math.log(bytes) / Math.log(k));
-	return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+	return `${(bytes / k ** i).toFixed(2)} ${sizes[i]}`;
 };
 
 export const Dashboard = (props: TorrentState) => {

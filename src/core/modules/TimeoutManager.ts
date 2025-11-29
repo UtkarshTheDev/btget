@@ -1,6 +1,6 @@
-import type { PieceBlock } from "../../queue/Queue";
 import type Pieces from "../../pieces/Pieces";
 import type Queue from "../../queue/Queue";
+import type { PieceBlock } from "../../queue/Queue";
 import type { ExtendedSocket } from "./EndgameManager";
 
 export interface ProgressTimeoutConfig {
@@ -18,6 +18,8 @@ export class TimeoutManager {
 	private downloadTimeout?: NodeJS.Timeout;
 	private progressCheckInterval?: NodeJS.Timeout;
 	private readonly BLOCK_TIMEOUT_MS = 30000; // 30 seconds
+	private readonly CHECK_INTERVAL_MS = 5000;
+	private readonly PROGRESS_CHECK_INTERVAL_MS = 10000;
 
 	// Progress tracking
 	private lastProgressBytes = 0;
@@ -51,7 +53,7 @@ export class TimeoutManager {
 				// Re-queue timed out blocks
 				timedOut.forEach((block) => {
 					const key = `${block.index}:${block.begin}`;
-					socket.activeRequests!.delete(key);
+					socket.activeRequests?.delete(key);
 					socket.pendingRequests = Math.max(
 						0,
 						(socket.pendingRequests ?? 0) - 1,
@@ -65,7 +67,7 @@ export class TimeoutManager {
 					onRequestMore(socket);
 				}
 			});
-		}, 5000); // Check every 5 seconds
+		}, this.CHECK_INTERVAL_MS); // Check every 5 seconds
 	}
 
 	/**
@@ -124,7 +126,7 @@ export class TimeoutManager {
 			} else {
 				this.lowSpeedStartTime = undefined; // Reset if speed recovers
 			}
-		}, 10000); // Check every 10 seconds
+		}, this.PROGRESS_CHECK_INTERVAL_MS); // Check every 10 seconds
 	}
 
 	/**

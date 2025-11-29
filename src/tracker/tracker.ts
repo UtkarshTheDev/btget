@@ -1,10 +1,10 @@
-import { Buffer } from "buffer";
-import crypto from "crypto";
-import dgram from "dgram";
+import { Buffer } from "node:buffer";
+import crypto from "node:crypto";
+import dgram from "node:dgram";
 import bencode from "bencode";
-import type { Peer, Torrent } from "../types/index";
 // import { SimpleDHT } from "../utils/dht"; // Commented out - DHT not needed for Phase 1
 import { infoHash, size } from "../protocol/parser";
+import type { Peer, Torrent } from "../types/index";
 import { genId } from "../utils/genId";
 import group from "../utils/group";
 
@@ -27,7 +27,9 @@ export function getPeers(
 	// Add announce-list URLs
 	if (torrent["announce-list"]) {
 		torrent["announce-list"].forEach((tier) => {
-			tier.forEach((url) => urls.add(url));
+			tier.forEach((url) => {
+				urls.add(url);
+			});
 		});
 	}
 
@@ -42,7 +44,9 @@ export function getPeers(
 		"udp://open.stealth.si:80/announce",
 	];
 
-	backupTrackers.forEach((url) => urls.add(url));
+	backupTrackers.forEach((url) => {
+		urls.add(url);
+	});
 
 	console.log(`📡 Contacting ${urls.size} trackers...`);
 
@@ -193,7 +197,7 @@ function getPeersFromUrl(
 	let url: URL;
 	try {
 		url = new URL(urlStr);
-	} catch (e) {
+	} catch (_e) {
 		console.error("Invalid tracker URL:", urlStr);
 		return;
 	}
@@ -225,7 +229,7 @@ function getPeersUdp(
 	const transactionTimeout = setTimeout(() => {
 		try {
 			socket.close();
-		} catch (e) {}
+		} catch (_e) {}
 		callback([]); // Return empty array instead of logging error
 	}, 8000);
 
@@ -241,7 +245,7 @@ function getPeersUdp(
 				clearTimeout(transactionTimeout);
 				try {
 					socket.close();
-				} catch (e) {}
+				} catch (_e) {}
 				callback([]);
 			}
 		});
@@ -289,9 +293,9 @@ function getPeersUdp(
 				});
 				try {
 					socket.close();
-				} catch (e) {}
+				} catch (_e) {}
 			}
-		} catch (error) {
+		} catch (_error) {
 			// Ignore malformed responses
 		}
 	});
@@ -300,7 +304,7 @@ function getPeersUdp(
 		clearTimeout(transactionTimeout);
 		try {
 			socket.close();
-		} catch (e) {}
+		} catch (_e) {}
 		callback([]);
 	});
 
@@ -349,10 +353,11 @@ async function getPeersHttp(
 		const arrayBuffer = await response.arrayBuffer();
 		const buffer = Buffer.from(arrayBuffer);
 
-		let decoded;
+		// biome-ignore lint/suspicious/noExplicitAny: bencode decode returns any
+		let decoded: any;
 		try {
 			decoded = bencode.decode(buffer);
-		} catch (decodeError) {
+		} catch (_decodeError) {
 			throw new Error("Invalid bencoded response");
 		}
 
@@ -397,22 +402,27 @@ async function getPeersHttp(
 		// Handle dictionary format
 		else if (Array.isArray(decoded.peers)) {
 			peers = decoded.peers
-				.map((peer: any) => {
-					let ip = peer.ip;
-					if (
-						Buffer.isBuffer(ip) ||
-						ArrayBuffer.isView(ip) ||
-						Array.isArray(ip)
-					) {
-						ip = Buffer.from(ip as any).toString("utf8");
-					}
+				.map(
+					// biome-ignore lint/suspicious/noExplicitAny: complex bencode structure
+					(peer: any) => {
+						let ip = peer.ip;
+						if (
+							Buffer.isBuffer(ip) ||
+							ArrayBuffer.isView(ip) ||
+							Array.isArray(ip)
+						) {
+							// biome-ignore lint/suspicious/noExplicitAny: complex bencode structure
+							ip = Buffer.from(ip as any).toString("utf8");
+						}
 
-					return {
-						ip: ip,
-						port:
-							typeof peer.port === "number" ? peer.port : parseInt(peer.port),
-					};
-				})
+						return {
+							ip: ip,
+							port:
+								typeof peer.port === "number" ? peer.port : parseInt(peer.port),
+						};
+					},
+				)
+				// biome-ignore lint/suspicious/noExplicitAny: complex bencode structure
 				.filter((p: any) => {
 					return (
 						p.ip &&
@@ -446,13 +456,13 @@ async function getPeersHttp(
 				if (peers.length < 10) {
 					peers = peers.concat(peers6.slice(0, 10));
 				}
-			} catch (error) {
+			} catch (_error) {
 				// Ignore IPv6 parsing errors
 			}
 		}
 
 		// Log statistics if we got peers
-		let stats = undefined;
+		let stats: { seeds: number; leechers: number } | undefined;
 		if (decoded.complete !== undefined || decoded.incomplete !== undefined) {
 			const seeders = decoded.complete || 0;
 			const leechers = decoded.incomplete || 0;
@@ -463,7 +473,7 @@ async function getPeersHttp(
 		}
 
 		callback(peers, stats);
-	} catch (error) {
+	} catch (_error) {
 		// Only log errors for debugging, don't spam console
 		// console.error(`HTTP Tracker Error for ${urlStr}:`, error.message);
 		callback([]);
@@ -490,7 +500,7 @@ function udpSend(
 	let url: URL;
 	try {
 		url = new URL(rawUrl);
-	} catch (e) {
+	} catch (_e) {
 		callback(new Error("Invalid URL"));
 		return;
 	}

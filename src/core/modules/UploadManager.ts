@@ -1,7 +1,7 @@
+import type { RequestPayload } from "../../protocol/messages";
+import { buildChoke, buildPiece, buildUnchoke } from "../../protocol/messages";
 import type { ExtendedSocket } from "./EndgameManager";
 import type { FileWriter } from "./FileWriter";
-import { buildPiece, buildChoke, buildUnchoke } from "../../protocol/messages";
-import type { RequestPayload } from "../../protocol/messages";
 
 /**
  * PeerUploadStats tracks upload/download statistics for tit-for-tat algorithm
@@ -27,13 +27,17 @@ export class UploadManager {
 	private chokingInterval: NodeJS.Timer | null = null;
 	private optimisticInterval: NodeJS.Timer | null = null;
 	private currentOptimisticPeer: string | null = null;
-	private allSockets: Map<string, any> | null = null; // Reference to active sockets
+	private allSockets: Map<string, ExtendedSocket> | null = null; // Reference to active sockets
 
 	// Configuration for maximum download speed
 	private readonly TIT_FOR_TAT_SLOTS = 4; // Peers who upload fastest to us
 	private readonly OPTIMISTIC_SLOTS = 2; // Random peers for discovery
 	private readonly CHOKING_ROUND_INTERVAL = 10000; // 10 seconds
 	private readonly OPTIMISTIC_UNCHOKE_INTERVAL = 30000; // 30 seconds
+	private readonly EMA_ALPHA = 0.3;
+	private readonly EMA_DECAY = 0.7;
+	private readonly MS_PER_SEC = 1000;
+	private readonly RANDOM_SORT_OFFSET = 0.5;
 
 	constructor(private fileWriter: FileWriter) {
 		this.startChokingAlgorithm();
@@ -42,7 +46,7 @@ export class UploadManager {
 	/**
 	 * Set reference to active sockets (called by PeerManager)
 	 */
-	setActiveSockets(sockets: Map<string, any>): void {
+	setActiveSockets(sockets: Map<string, ExtendedSocket>): void {
 		this.allSockets = sockets;
 	}
 
@@ -70,11 +74,12 @@ export class UploadManager {
 		stats.bytesDownloadedFromPeer += bytesReceived;
 
 		// Calculate download rate (exponential moving average)
-		const timeDelta = (now - stats.lastDownloadTime) / 1000; // seconds
+		const timeDelta = (now - stats.lastDownloadTime) / this.MS_PER_SEC; // seconds
 		if (timeDelta > 0) {
 			const instantRate = bytesReceived / timeDelta;
 			// EMA with alpha = 0.3 for smoothing
-			stats.downloadRate = stats.downloadRate * 0.7 + instantRate * 0.3;
+			stats.downloadRate =
+				stats.downloadRate * this.EMA_DECAY + instantRate * this.EMA_ALPHA;
 			stats.lastDownloadTime = now;
 		}
 	}
@@ -142,10 +147,11 @@ export class UploadManager {
 			);
 
 			const now = Date.now();
-			const timeDelta = (now - stats.lastUploadTime) / 1000;
+			const timeDelta = (now - stats.lastUploadTime) / this.MS_PER_SEC;
 			if (timeDelta > 0) {
 				const instantRate = block.length / timeDelta;
-				stats.uploadRate = stats.uploadRate * 0.7 + instantRate * 0.3;
+				stats.uploadRate =
+					stats.uploadRate * this.EMA_DECAY + instantRate * this.EMA_ALPHA;
 				stats.lastUploadTime = now;
 			}
 		} catch (error) {
@@ -203,8 +209,12 @@ export class UploadManager {
 
 		// Combine: tit-for-tat + optimistic
 		const peersToUnchoke = new Set<string>();
-		titForTatPeers.forEach((p) => peersToUnchoke.add(p.peerId));
-		optimisticPeers.forEach((p) => peersToUnchoke.add(p.peerId));
+		titForTatPeers.forEach((p) => {
+			peersToUnchoke.add(p.peerId);
+		});
+		optimisticPeers.forEach((p) => {
+			peersToUnchoke.add(p.peerId);
+		});
 
 		// Bootstrap: if we have no peers to unchoke (no download activity yet),
 		// unchoke a few random peers to start the tit-for-tat cycle
@@ -213,9 +223,13 @@ export class UploadManager {
 			const availablePeers = allPeers.filter(
 				(p) => !peersToUnchoke.has(p.peerId),
 			);
-			const shuffled = availablePeers.sort(() => Math.random() - 0.5);
+			const shuffled = availablePeers.sort(
+				() => Math.random() - this.RANDOM_SORT_OFFSET,
+			);
 			const bootstrapPeers = shuffled.slice(0, remainingSlots);
-			bootstrapPeers.forEach((p) => peersToUnchoke.add(p.peerId));
+			bootstrapPeers.forEach((p) => {
+				peersToUnchoke.add(p.peerId);
+			});
 		}
 
 		// Update choke status for all peers
@@ -245,7 +259,9 @@ export class UploadManager {
 
 		// Randomly select optimistic peers
 		const optimisticCount = Math.min(this.OPTIMISTIC_SLOTS, chokedPeers.length);
-		const shuffled = chokedPeers.sort(() => Math.random() - 0.5);
+		const shuffled = chokedPeers.sort(
+			() => Math.random() - this.RANDOM_SORT_OFFSET,
+		);
 		const selectedOptimistic = shuffled.slice(0, optimisticCount);
 
 		// Update current optimistic peer

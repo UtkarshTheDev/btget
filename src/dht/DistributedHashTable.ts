@@ -1,8 +1,8 @@
-import dgram from "dgram";
-import crypto from "crypto";
+import crypto from "node:crypto";
+import dgram from "node:dgram";
+import { EventEmitter } from "node:events";
 import bencode from "bencode";
 import { RoutingTable } from "./RoutingTable";
-import { EventEmitter } from "events";
 
 interface DHTOptions {
 	port?: number;
@@ -18,17 +18,27 @@ export class DistributedHashTable extends EventEmitter {
 		{ host: "dht.transmissionbt.com", port: 6881 },
 		{ host: "router.utorrent.com", port: 6881 },
 	];
+	private readonly NODE_ID_LENGTH = 20;
+	private readonly COMPACT_NODE_SIZE = 26;
+	private readonly IP_BYTE_OFFSET_1 = 20;
+	private readonly IP_BYTE_OFFSET_2 = 21;
+	private readonly IP_BYTE_OFFSET_3 = 22;
+	private readonly IP_BYTE_OFFSET_4 = 23;
+	private readonly PORT_BYTE_OFFSET = 24;
+	private readonly COMPACT_PEER_PORT_OFFSET = 4;
+	private readonly DEFAULT_PORT = 6881;
+	private readonly TRANSACTION_ID_LENGTH = 2;
 
 	constructor(options: DHTOptions = {}) {
 		super();
-		this.localId = crypto.randomBytes(20);
+		this.localId = crypto.randomBytes(this.NODE_ID_LENGTH);
 		this.routingTable = new RoutingTable();
 		this.socket = dgram.createSocket("udp4");
 
 		this.socket.on("message", (msg, rinfo) => this.handleMessage(msg, rinfo));
 		this.socket.on("error", (err) => console.error("DHT Error:", err));
 
-		const port = options.port || 6881;
+		const port = options.port || this.DEFAULT_PORT;
 		this.socket.bind(port, () => {
 			// console.log(`DHT listening on port ${port}`);
 			this.bootstrap();
@@ -48,7 +58,7 @@ export class DistributedHashTable extends EventEmitter {
 	 * Send find_node query
 	 */
 	private findNode(host: string, port: number, target: Buffer): void {
-		const tid = crypto.randomBytes(2);
+		const tid = crypto.randomBytes(this.TRANSACTION_ID_LENGTH);
 		const msg = {
 			t: tid,
 			y: "q",
@@ -106,14 +116,14 @@ export class DistributedHashTable extends EventEmitter {
 			const decoded = bencode.decode(msg);
 
 			// Add sender to routing table
-			if (decoded.a && decoded.a.id) {
+			if (decoded.a?.id) {
 				this.routingTable.addNode({
 					id: decoded.a.id,
 					ip: rinfo.address,
 					port: rinfo.port,
 					lastSeen: Date.now(),
 				});
-			} else if (decoded.r && decoded.r.id) {
+			} else if (decoded.r?.id) {
 				this.routingTable.addNode({
 					id: decoded.r.id,
 					ip: rinfo.address,
@@ -141,7 +151,7 @@ export class DistributedHashTable extends EventEmitter {
 					this.sendResponse(decoded.t, rinfo, { id: this.localId });
 				}
 			}
-		} catch (err) {
+		} catch (_err) {
 			// Ignore malformed messages
 		}
 	}
@@ -150,11 +160,11 @@ export class DistributedHashTable extends EventEmitter {
 	 * Parse compact node info
 	 */
 	private parseNodes(nodes: Buffer): void {
-		for (let i = 0; i < nodes.length; i += 26) {
+		for (let i = 0; i < nodes.length; i += this.COMPACT_NODE_SIZE) {
 			try {
-				const id = nodes.slice(i, i + 20);
-				const ip = `${nodes[i + 20]}.${nodes[i + 21]}.${nodes[i + 22]}.${nodes[i + 23]}`;
-				const port = nodes.readUInt16BE(i + 24);
+				const id = nodes.slice(i, i + this.NODE_ID_LENGTH);
+				const ip = `${nodes[i + this.IP_BYTE_OFFSET_1]}.${nodes[i + this.IP_BYTE_OFFSET_2]}.${nodes[i + this.IP_BYTE_OFFSET_3]}.${nodes[i + this.IP_BYTE_OFFSET_4]}`;
+				const port = nodes.readUInt16BE(i + this.PORT_BYTE_OFFSET);
 
 				this.routingTable.addNode({
 					id,
@@ -162,7 +172,7 @@ export class DistributedHashTable extends EventEmitter {
 					port,
 					lastSeen: Date.now(),
 				});
-			} catch (e) {
+			} catch (_e) {
 				// Ignore parse errors
 			}
 		}
@@ -176,9 +186,9 @@ export class DistributedHashTable extends EventEmitter {
 		values.forEach((val) => {
 			try {
 				const ip = `${val[0]}.${val[1]}.${val[2]}.${val[3]}`;
-				const port = val.readUInt16BE(4);
+				const port = val.readUInt16BE(this.COMPACT_PEER_PORT_OFFSET);
 				peers.push({ ip, port });
-			} catch (e) {
+			} catch (_e) {
 				// Ignore
 			}
 		});
@@ -188,14 +198,14 @@ export class DistributedHashTable extends EventEmitter {
 	/**
 	 * Send UDP message
 	 */
-	private send(msg: any, host: string, port: number): void {
+	private send(msg: unknown, host: string, port: number): void {
 		// Don't send if socket is closed
 		if (this.isStopped) return;
 
 		try {
 			const buf = bencode.encode(msg);
 			this.socket.send(buf, port, host);
-		} catch (err) {
+		} catch (_err) {
 			// Silently ignore errors if socket is closed
 		}
 	}
@@ -203,7 +213,11 @@ export class DistributedHashTable extends EventEmitter {
 	/**
 	 * Send response
 	 */
-	private sendResponse(tid: Buffer, rinfo: dgram.RemoteInfo, args: any): void {
+	private sendResponse(
+		tid: Buffer,
+		rinfo: dgram.RemoteInfo,
+		args: unknown,
+	): void {
 		const msg = {
 			t: tid,
 			y: "r",
@@ -221,7 +235,7 @@ export class DistributedHashTable extends EventEmitter {
 		this.isStopped = true;
 		try {
 			this.socket.close();
-		} catch (err) {
+		} catch (_err) {
 			// Socket may already be closed
 		}
 	}

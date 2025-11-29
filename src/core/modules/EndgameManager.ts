@@ -1,6 +1,6 @@
-import type { Socket } from "net";
-import type { PieceBlock } from "../../queue/Queue";
+import type { Socket } from "node:net";
 import { buildCancel } from "../../protocol/messages";
+import type { PieceBlock } from "../../queue/Queue";
 
 // Track block requests with timestamps for timeout detection
 export interface BlockRequest {
@@ -35,6 +35,9 @@ export class EndgameManager {
 	private readonly endgameThreshold = 95; // percent
 	private readonly queueThreshold = 50; // blocks
 
+	private static readonly ENDGAME_PIPELINE = 5;
+	private static readonly DEFAULT_PIPELINE = 10;
+
 	/**
 	 * Check if should enter endgame mode
 	 */
@@ -52,7 +55,6 @@ export class EndgameManager {
 	enterEndgame(sockets: Map<string, ExtendedSocket>): void {
 		if (this.inEndgame) return;
 
-		this.inEndgame = true;
 		this.inEndgame = true;
 
 		// Mark all sockets as in endgame
@@ -85,7 +87,7 @@ export class EndgameManager {
 							0,
 							(otherSocket.pendingRequests ?? 0) - 1,
 						);
-					} catch (e) {
+					} catch (_e) {
 						// Ignore write errors
 					}
 				}
@@ -98,7 +100,12 @@ export class EndgameManager {
 	 */
 	getMaxPipeline(socket: ExtendedSocket): number {
 		// Use socket's adaptive maxPipeline, fallback to defaults
-		return socket.maxPipeline ?? (socket.endgameMode ? 5 : 10);
+		return (
+			socket.maxPipeline ??
+			(socket.endgameMode
+				? EndgameManager.ENDGAME_PIPELINE
+				: EndgameManager.DEFAULT_PIPELINE)
+		);
 	}
 
 	/**

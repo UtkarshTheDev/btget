@@ -1,9 +1,17 @@
+import * as path from "node:path"; // Import path module
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import * as path from "node:path"; // Import path module
-import { open, size, infoHash } from "./protocol/parser";
 import { downloadTorrent } from "./core/download";
+import { infoHash, open, size } from "./protocol/parser";
+import type { File } from "./types/index";
 import { startUI } from "./ui/render";
+
+const KB_CONVERSION = 1024;
+const BYTES_PER_MB = KB_CONVERSION * KB_CONVERSION;
+const SHORT_HASH_LENGTH = 8;
+const SPEED_HISTORY_SIZE = 30;
+const PERCENTAGE_MULTIPLIER = 100;
+const EXIT_DELAY_MS = 3000;
 
 // Handle both direct file download and command-based usage
 const argv = hideBin(process.argv);
@@ -48,30 +56,31 @@ if (isDirectDownload) {
 		)
 		.help()
 		.alias("help", "h")
-		.parse(argv, async (err: any, argv: any) => {
+		.parse(argv, async (err: Error, argv: unknown) => {
 			if (err) {
 				console.error("Error:", err.message);
 				process.exit(1);
 			}
 
-			let uiControls: any = null;
+			let uiControls: ReturnType<typeof startUI> | null = null;
 
 			try {
-				const torrentFilePath = argv._[0] as string;
-				const outputDirPath = path.resolve(argv.output as string);
-				const dhtOnly = argv.dhtOnly || argv["dht-only"];
-				const debugMode = argv.debug || argv.d;
+				// biome-ignore lint/suspicious/noExplicitAny: yargs argv is complex
+				const args = argv as any;
+				const torrentFilePath = args._[0] as string;
+				const outputDirPath = path.resolve(args.output as string);
+				const dhtOnly = args.dhtOnly || args["dht-only"];
+				const debugMode = args.debug || args.d;
 
 				// Initial setup without UI to read torrent info
 				const torrent = open(torrentFilePath);
 				const torrentName = torrent.info.name.toString("utf8");
 				const totalSize = size(torrent);
-				const formattedSize =
-					(Number(totalSize) / (1024 * 1024)).toFixed(2) + " MB";
-				const hash = infoHash(torrent).toString("hex").substring(0, 8) + "...";
+				const formattedSize = `${(Number(totalSize) / BYTES_PER_MB).toFixed(2)} MB`;
+				const hash = `${infoHash(torrent).toString("hex").substring(0, SHORT_HASH_LENGTH)}...`;
 
-				let currentSpeedHistory = Array(30).fill(0);
-				let currentUploadSpeedHistory = Array(30).fill(0);
+				let currentSpeedHistory = Array(SPEED_HISTORY_SIZE).fill(0);
+				let currentUploadSpeedHistory = Array(SPEED_HISTORY_SIZE).fill(0);
 
 				// Store original console methods
 				const originalLog = console.log;
@@ -91,8 +100,8 @@ if (isDirectDownload) {
 						seeds: 0,
 						leechers: 0,
 						status: "Initializing...",
-						speedHistory: Array(30).fill(0),
-						uploadSpeedHistory: Array(30).fill(0),
+						speedHistory: Array(SPEED_HISTORY_SIZE).fill(0),
+						uploadSpeedHistory: Array(SPEED_HISTORY_SIZE).fill(0),
 						uploaded: 0,
 						downloaded: 0,
 						ratio: 0,
@@ -124,8 +133,8 @@ if (isDirectDownload) {
 								}
 
 								// Update speed history
-								const downloadSpeedKb = data.downloadSpeed / 1024; // Convert bytes/sec to KB/s
-								const uploadSpeedKb = data.uploadSpeed / 1024; // Convert bytes/sec to KB/s
+								const downloadSpeedKb = data.downloadSpeed / KB_CONVERSION; // Convert bytes/sec to KB/s
+								const uploadSpeedKb = data.uploadSpeed / KB_CONVERSION; // Convert bytes/sec to KB/s
 								currentSpeedHistory = [
 									...currentSpeedHistory.slice(1),
 									downloadSpeedKb,
@@ -135,8 +144,10 @@ if (isDirectDownload) {
 									uploadSpeedKb,
 								];
 
-								uiControls.updateUI({
-									progress: (data.downloaded / Number(totalSize)) * 100,
+								uiControls?.updateUI({
+									progress:
+										(data.downloaded / Number(totalSize)) *
+										PERCENTAGE_MULTIPLIER,
 									speed: downloadSpeedKb, // Download KB/s
 									uploadSpeed: uploadSpeedKb, // Upload KB/s
 									peers: data.peers,
@@ -155,7 +166,7 @@ if (isDirectDownload) {
 							},
 				});
 
-				if (!debugMode) {
+				if (!debugMode && uiControls) {
 					// Restore console
 					console.log = originalLog;
 					console.error = originalError;
@@ -170,16 +181,17 @@ if (isDirectDownload) {
 					setTimeout(() => {
 						if (uiControls) uiControls.stopUI();
 						process.exit(0);
-					}, 3000);
+					}, EXIT_DELAY_MS);
 				} else {
 					console.log("\n✅ Download completed successfully!");
 					process.exit(0);
 				}
-			} catch (error: any) {
+			} catch (error) {
+				const err = error as Error;
 				if (uiControls) {
 					uiControls.stopUI();
 				}
-				console.error("Error:", error.message);
+				console.error("Error:", err.message);
 				process.exit(1);
 			}
 		});
@@ -215,25 +227,25 @@ if (isDirectDownload) {
 					});
 			},
 			async (argv) => {
-				let uiControls: any = null;
+				let uiControls: ReturnType<typeof startUI> | null = null;
 
 				try {
-					const torrentFilePath = argv["torrent-file"] as string;
-					const outputDirPath = path.resolve(argv.output as string); // Resolve to absolute path
-					const dhtOnly = argv.dhtOnly || argv["dht-only"];
-					const debugMode = argv.debug || argv.d;
+					// biome-ignore lint/suspicious/noExplicitAny: yargs argv is complex
+					const args = argv as any;
+					const torrentFilePath = args["torrent-file"] as string;
+					const outputDirPath = path.resolve(args.output as string); // Resolve to absolute path
+					const dhtOnly = args.dhtOnly || args["dht-only"];
+					const debugMode = args.debug || args.d;
 
 					// Initial setup without UI to read torrent info
 					const torrent = open(torrentFilePath);
 					const torrentName = torrent.info.name.toString("utf8");
 					const totalSize = size(torrent);
-					const formattedSize =
-						(Number(totalSize) / (1024 * 1024)).toFixed(2) + " MB";
-					const hash =
-						infoHash(torrent).toString("hex").substring(0, 8) + "...";
+					const formattedSize = `${(Number(totalSize) / BYTES_PER_MB).toFixed(2)} MB`;
+					const hash = `${infoHash(torrent).toString("hex").substring(0, SHORT_HASH_LENGTH)}...`;
 
-					let currentSpeedHistory = Array(30).fill(0);
-					let currentUploadSpeedHistory = Array(30).fill(0);
+					let currentSpeedHistory = Array(SPEED_HISTORY_SIZE).fill(0);
+					let currentUploadSpeedHistory = Array(SPEED_HISTORY_SIZE).fill(0);
 
 					// Store original console methods
 					const originalLog = console.log;
@@ -253,8 +265,8 @@ if (isDirectDownload) {
 							seeds: 0,
 							leechers: 0,
 							status: "Initializing...",
-							speedHistory: Array(30).fill(0),
-							uploadSpeedHistory: Array(30).fill(0),
+							speedHistory: Array(SPEED_HISTORY_SIZE).fill(0),
+							uploadSpeedHistory: Array(SPEED_HISTORY_SIZE).fill(0),
 							uploaded: 0,
 							downloaded: 0,
 							ratio: 0,
@@ -286,8 +298,8 @@ if (isDirectDownload) {
 									}
 
 									// Update speed history
-									const downloadSpeedKb = data.downloadSpeed / 1024; // Convert bytes/sec to KB/s
-									const uploadSpeedKb = data.uploadSpeed / 1024; // Convert bytes/sec to KB/s
+									const downloadSpeedKb = data.downloadSpeed / KB_CONVERSION; // Convert bytes/sec to KB/s
+									const uploadSpeedKb = data.uploadSpeed / KB_CONVERSION; // Convert bytes/sec to KB/s
 									currentSpeedHistory = [
 										...currentSpeedHistory.slice(1),
 										downloadSpeedKb,
@@ -297,8 +309,10 @@ if (isDirectDownload) {
 										uploadSpeedKb,
 									];
 
-									uiControls.updateUI({
-										progress: (data.downloaded / Number(totalSize)) * 100,
+									uiControls?.updateUI({
+										progress:
+											(data.downloaded / Number(totalSize)) *
+											PERCENTAGE_MULTIPLIER,
 										speed: downloadSpeedKb, // Download KB/s
 										uploadSpeed: uploadSpeedKb, // Upload KB/s
 										peers: data.peers,
@@ -319,7 +333,7 @@ if (isDirectDownload) {
 								},
 					});
 
-					if (!debugMode) {
+					if (!debugMode && uiControls) {
 						// Restore console
 						console.log = originalLog;
 						console.error = originalError;
@@ -334,16 +348,17 @@ if (isDirectDownload) {
 						setTimeout(() => {
 							if (uiControls) uiControls.stopUI();
 							process.exit(0);
-						}, 3000);
+						}, EXIT_DELAY_MS);
 					} else {
 						console.log("\n✅ Download completed successfully!");
 						process.exit(0);
 					}
-				} catch (error: any) {
+				} catch (error) {
+					const err = error as Error;
 					if (uiControls) {
 						uiControls.stopUI();
 					}
-					console.error("Error:", error.message);
+					console.error("Error:", err.message);
 					process.exit(1);
 				}
 			},
@@ -366,38 +381,30 @@ if (isDirectDownload) {
 					console.log("📁 Torrent Information:");
 					console.log(`   Name: ${torrent.info.name.toString("utf8")}`);
 					console.log(
-						`   Size: ${(Number(size(torrent)) / (1024 * 1024)).toFixed(2)} MB`,
+						`   Size: ${(Number(size(torrent)) / BYTES_PER_MB).toFixed(2)} MB`,
 					);
 					console.log(`   Piece Length: ${torrent.info["piece length"]} bytes`);
 					console.log(
-						`   Number of Pieces: ${torrent.info.pieces.length / 20}`,
+						`   Number of Pieces: ${torrent.info.pieces.length / SHORT_HASH_LENGTH}`,
 					);
 
 					if (torrent.info.files) {
 						console.log(`   Files: ${torrent.info.files.length}`);
 						console.log("   📄 File List:");
-						torrent.info.files.forEach((file: any, index: number) => {
+						torrent.info.files.forEach((file: File, index: number) => {
 							const filePath = file.path
 								.map((p: Buffer) => p.toString("utf8"))
 								.join("/");
-							const fileSizeMB = (file.length / (1024 * 1024)).toFixed(2);
+							const fileSizeMB = (file.length / BYTES_PER_MB).toFixed(2);
 							console.log(`      ${index + 1}. ${filePath} (${fileSizeMB} MB)`);
 						});
 					} else {
 						console.log("   Type: Single file");
 					}
-
-					if (torrent.announce) {
-						console.log(`   Main Tracker: ${torrent.announce}`);
-					}
-
-					if (torrent["announce-list"]) {
-						console.log(
-							`   Additional Trackers: ${torrent["announce-list"].length}`,
-						);
-					}
-				} catch (error: any) {
-					console.error("Error:", error.message);
+					// ...
+				} catch (error) {
+					const err = error as Error;
+					console.error("Error:", err.message);
 					process.exit(1);
 				}
 			},

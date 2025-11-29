@@ -1,20 +1,19 @@
-import { Socket } from "net";
-import type { Peer, Torrent } from "../types/index";
-
+import { Socket } from "node:net";
+import type { MessageHandler } from "../core/handlers/MessageHandler";
+import type {
+	EndgameManager,
+	ExtendedSocket,
+} from "../core/modules/EndgameManager";
+import type { UploadManager } from "../core/modules/UploadManager";
 import type Pieces from "../pieces/Pieces";
-import type Queue from "../queue/Queue";
 import {
 	buildHandshake,
 	buildInterested,
-	buildRequest,
 	buildKeepAlive,
+	buildRequest,
 } from "../protocol/messages";
-import { MessageHandler } from "../core/handlers/MessageHandler";
-import {
-	EndgameManager,
-	type ExtendedSocket,
-} from "../core/modules/EndgameManager";
-import { UploadManager } from "../core/modules/UploadManager";
+import type Queue from "../queue/Queue";
+import type { Peer, Torrent } from "../types/index";
 
 /**
  * PeerManager handles peer connections, pooling, and lifecycle
@@ -29,6 +28,16 @@ export class PeerManager {
 	private connectionInterval: NodeJS.Timeout;
 	private keepAliveInterval: NodeJS.Timeout;
 	private healthCheckInterval: NodeJS.Timeout;
+	private readonly CONNECTION_CHECK_INTERVAL = 1000;
+	private readonly KEEP_ALIVE_INTERVAL = 90000;
+	private readonly HEALTH_CHECK_INTERVAL = 30000;
+	private readonly SOCKET_TIMEOUT = 120000;
+	private readonly HANDSHAKE_LENGTH = 68;
+	private readonly PROTOCOL_ID_LENGTH = 19;
+	private readonly PROTOCOL_STRING_START = 1;
+	private readonly PROTOCOL_STRING_END = 20;
+	private readonly PROTOCOL_STRING = "BitTorrent protocol";
+	private readonly REQUEST_TIMEOUT_MS = 100;
 
 	constructor(
 		private torrent: Torrent,
@@ -42,15 +51,21 @@ export class PeerManager {
 		this.uploadManager.setActiveSockets(this.activeSockets);
 
 		// Start connection manager loop
-		this.connectionInterval = setInterval(() => this.manageConnections(), 1000);
+		this.connectionInterval = setInterval(
+			() => this.manageConnections(),
+			this.CONNECTION_CHECK_INTERVAL,
+		);
 
 		// Start keep-alive sender (every 90 seconds)
-		this.keepAliveInterval = setInterval(() => this.sendKeepAlives(), 90000);
+		this.keepAliveInterval = setInterval(
+			() => this.sendKeepAlives(),
+			this.KEEP_ALIVE_INTERVAL,
+		);
 
 		// Start peer health monitoring (every 30 seconds)
 		this.healthCheckInterval = setInterval(
 			() => this.monitorPeerHealth(),
-			30000,
+			this.HEALTH_CHECK_INTERVAL,
 		);
 	}
 
@@ -61,7 +76,9 @@ export class PeerManager {
 		clearInterval(this.connectionInterval);
 		clearInterval(this.keepAliveInterval);
 		clearInterval(this.healthCheckInterval);
-		this.activeSockets.forEach((socket) => socket.destroy());
+		this.activeSockets.forEach((socket) => {
+			socket.destroy();
+		});
 		this.activeSockets.clear();
 		this.uploadManager.stop();
 	}
@@ -113,9 +130,9 @@ export class PeerManager {
 		socket.requestTimestamps = new Map();
 
 		// Configure socket
-		socket.setKeepAlive(true, 30000);
+		socket.setKeepAlive(true, this.HEALTH_CHECK_INTERVAL);
 		socket.setNoDelay(true);
-		socket.setTimeout(120000); // Increased from 30s to 120s for large files
+		socket.setTimeout(this.SOCKET_TIMEOUT); // Increased from 30s to 120s for large files
 
 		let handshakeComplete = false;
 		let messageBuffer = Buffer.alloc(0);
@@ -135,22 +152,26 @@ export class PeerManager {
 			messageBuffer = Buffer.concat([messageBuffer, data]);
 
 			// Handle handshake
-			if (!handshakeComplete && messageBuffer.length >= 68) {
-				const handshakeData = messageBuffer.slice(0, 68);
+			if (!handshakeComplete && messageBuffer.length >= this.HANDSHAKE_LENGTH) {
+				const handshakeData = messageBuffer.slice(0, this.HANDSHAKE_LENGTH);
 				if (
-					handshakeData[0] === 19 &&
-					handshakeData.toString("utf8", 1, 20) === "BitTorrent protocol"
+					handshakeData[0] === this.PROTOCOL_ID_LENGTH &&
+					handshakeData.toString(
+						"utf8",
+						this.PROTOCOL_STRING_START,
+						this.PROTOCOL_STRING_END,
+					) === this.PROTOCOL_STRING
 				) {
 					handshakeComplete = true;
 					this.connectedPeers++;
-					messageBuffer = messageBuffer.slice(68);
+					messageBuffer = messageBuffer.slice(this.HANDSHAKE_LENGTH);
 					socket.write(buildInterested());
 
 					setTimeout(() => {
 						if (!socket.destroyed) {
 							this.requestPieces(socket);
 						}
-					}, 100);
+					}, this.REQUEST_TIMEOUT_MS);
 				} else {
 					socket.destroy();
 					return;
@@ -260,7 +281,7 @@ export class PeerManager {
 					socket.requestTimestamps.set(blockKey, Date.now());
 					this.pieces.addRequested(pieceBlock);
 					socket.pendingRequests = (socket.pendingRequests ?? 0) + 1;
-				} catch (error) {
+				} catch (_error) {
 					this.queue.queueFront(pieceBlock);
 					break;
 				}
@@ -326,7 +347,7 @@ export class PeerManager {
 			if (!socket.destroyed && socket.writable) {
 				try {
 					socket.write(keepAliveMsg);
-				} catch (error) {
+				} catch (_error) {
 					// Silently ignore write errors
 				}
 			}

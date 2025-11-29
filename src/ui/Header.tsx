@@ -1,13 +1,14 @@
-import { useState, useEffect } from "react";
 import { Box, Text } from "ink";
+import { useEffect, useState } from "react";
 
 export const Header = () => {
 	const [blink, setBlink] = useState(true);
 
 	useEffect(() => {
+		const BLINK_INTERVAL_MS = 800;
 		const blinker = setInterval(() => {
 			setBlink((prev) => !prev);
-		}, 800);
+		}, BLINK_INTERVAL_MS);
 		return () => {
 			clearInterval(blinker);
 		};
