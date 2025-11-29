@@ -118,11 +118,12 @@ Look for issues labeled `good first issue` or `help wanted`:
 - Documentation updates
 
 #### 🚀 Advanced Features
-- Resume downloads functionality
-- Seeding support
-- Bandwidth limiting
-- DHT support
-- Magnet link support
+- Seeding support (upload-only mode after download completion)
+- Bandwidth limiting (configurable upload/download speed caps)
+- Magnet link support (download without .torrent files)
+- Protocol encryption (encrypted peer communication)
+- Web UI or API for remote control
+- Multi-torrent management (download multiple torrents simultaneously)
 
 ## 🛠️ Development Setup
 
