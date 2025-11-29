@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "ignore": ["dist", "src/ui/run-ui.tsx"]
+    "experimentalScannerIgnores": ["dist", "src/ui/run-ui.tsx"]
   },
   "formatter": {
     "enabled": true
@@ -9,10 +9,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
-      "style": {
-        "noMagicNumbers": "info"
-      }
+      "recommended": true
     }
   }
 }
