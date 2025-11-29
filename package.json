@@ -65,7 +65,7 @@
 	},
 	"type": "module",
 	"devDependencies": {
-		"@biomejs/biome": "1.8.3",
+		"@biomejs/biome": "2.3.8",
 		"@types/bencode": "^2.0.4",
 		"@types/cli-progress": "^3.11.6",
 		"@types/ink-big-text": "^1.2.4",
