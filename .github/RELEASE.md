@@ -1,0 +1,220 @@
+# Release and Publishing Guide
+
+This guide explains how to create releases and publish the `btget` package to npm using the automated GitHub Actions workflows.
+
+## 📋 Prerequisites
+
+Before you can publish releases, you need to set up the following secrets in your GitHub repository:
+
+### Required Secrets
+
+1. **NPM_TOKEN** - Required for publishing to npm
+   - Go to [npmjs.com](https://www.npmjs.com/) and log in
+   - Navigate to your profile → Access Tokens
+   - Click "Generate New Token" → "Classic Token"
+   - Select "Automation" type
+   - Copy the token
+   - In your GitHub repo: Settings → Secrets and variables → Actions → New repository secret
+   - Name: `NPM_TOKEN`
+   - Value: Paste your npm token
+
+2. **GITHUB_TOKEN** - Automatically provided by GitHub Actions (no setup needed)
+
+## 🚀 Creating a Release
+
+The release workflow is triggered automatically when you push a version tag. Here's how to create a release:
+
+### Step 1: Update Version
+
+Update the version in `package.json`:
+
+```json
+{
+  "version": "1.0.1"
+}
+```
+
+### Step 2: Update CHANGELOG.md
+
+Add a new section for your version in `CHANGELOG.md`:
+
+```markdown
+## [1.0.1] - 2024-11-30
+
+### Added
+- New feature X
+- New feature Y
+
+### Fixed
+- Bug fix A
+- Bug fix B
+
+### Changed
+- Improvement C
+```
+
+### Step 3: Commit Changes
+
+```bash
+git add package.json CHANGELOG.md
+git commit -m "chore: bump version to 1.0.1"
+git push origin main
+```
+
+### Step 4: Create and Push Tag
+
+```bash
+# Create a tag with the version number (must start with 'v')
+git tag v1.0.1
+
+# Push the tag to GitHub
+git push origin v1.0.1
+```
+
+### Step 5: Automated Process
+
+Once you push the tag, GitHub Actions will automatically:
+
+1. ✅ Build the package
+2. ✅ Run tests and type checking
+3. ✅ Create a GitHub Release with:
+   - Release notes from CHANGELOG.md
+   - Downloadable tarball
+   - Auto-generated release notes
+4. ✅ Publish to npm registry
+5. ✅ Publish to GitHub Packages (optional)
+6. ✅ Add a comment with npm installation instructions
+
+## 📦 What Gets Published
+
+### npm Package
+- Package name: `btget`
+- Registry: https://registry.npmjs.org
+- Installation: `npm install -g btget`
+
+### GitHub Packages
+- Package name: `@utkarshthedev/btget`
+- Registry: https://npm.pkg.github.com
+- Installation: Requires GitHub authentication
+
+### GitHub Release
+- Release page: https://github.com/UtkarshTheDev/btget/releases
+- Includes: Tarball, changelog, and release notes
+
+## 🔄 Workflow Files
+
+### `.github/workflows/release.yml`
+Main release workflow that handles:
+- Building the package
+- Creating GitHub releases
+- Publishing to npm
+- Publishing to GitHub Packages
+
+### `.github/workflows/ci.yml`
+Continuous integration workflow that runs on every push:
+- Type checking
+- Linting
+- Building
+- Testing
+
+### `.github/workflows/badges.yml`
+Updates repository badges and tracks npm statistics
+
+## 🎯 Version Naming Convention
+
+Follow [Semantic Versioning](https://semver.org/):
+
+- **Major** (v2.0.0): Breaking changes
+- **Minor** (v1.1.0): New features, backward compatible
+- **Patch** (v1.0.1): Bug fixes, backward compatible
+
+Examples:
+```bash
+git tag v1.0.1  # Patch release
+git tag v1.1.0  # Minor release
+git tag v2.0.0  # Major release
+```
+
+## 🐛 Troubleshooting
+
+### Release Failed
+
+1. Check the Actions tab in GitHub
+2. Look for error messages in the workflow logs
+3. Common issues:
+   - Missing NPM_TOKEN secret
+   - Version already exists on npm
+   - Build or test failures
+
+### Re-releasing a Version
+
+If you need to re-release the same version:
+
+```bash
+# Delete the tag locally
+git tag -d v1.0.1
+
+# Delete the tag remotely
+git push origin :refs/tags/v1.0.1
+
+# Delete the GitHub release (manually in GitHub UI)
+
+# Create and push the tag again
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+### Publishing Manually
+
+If the automated workflow fails, you can publish manually:
+
+```bash
+# Build the package
+bun run build
+
+# Publish to npm
+npm publish --access public
+```
+
+## 📊 Monitoring Releases
+
+### GitHub Actions
+- View workflow runs: https://github.com/UtkarshTheDev/btget/actions
+- Check release workflow: https://github.com/UtkarshTheDev/btget/actions/workflows/release.yml
+
+### npm Package
+- Package page: https://www.npmjs.com/package/btget
+- Download stats: https://npm-stat.com/charts.html?package=btget
+
+### GitHub Releases
+- All releases: https://github.com/UtkarshTheDev/btget/releases
+- Latest release: https://github.com/UtkarshTheDev/btget/releases/latest
+
+## 🎨 Badges
+
+The following badges are automatically updated in README.md:
+
+- **npm version**: Shows the latest published version
+- **npm downloads**: Monthly download count
+- **GitHub release**: Latest GitHub release version
+- **CI status**: Build and test status
+- **Release status**: Release workflow status
+
+All badges are dynamically generated by [shields.io](https://shields.io) and update automatically.
+
+## 📝 Best Practices
+
+1. **Always update CHANGELOG.md** before creating a release
+2. **Test thoroughly** before tagging a release
+3. **Use semantic versioning** for version numbers
+4. **Write clear commit messages** for the version bump
+5. **Review the release** on GitHub after it's created
+6. **Verify the npm package** after publishing
+
+## 🔐 Security Notes
+
+- Never commit your NPM_TOKEN to the repository
+- Keep your npm access tokens secure
+- Use "Automation" type tokens for CI/CD
+- Rotate tokens periodically
+- Review the "Publish to npm" workflow logs to ensure no sensitive data is exposed

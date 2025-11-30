@@ -11,10 +11,23 @@
 
 [Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Development](#-development) • [Contributing](#-contributing)
 
-[![npm version](https://badge.fury.io/js/btget.svg)](https://badge.fury.io/js/btget)
-[![Downloads](https://img.shields.io/npm/dm/btget.svg)](https://npmjs.org/package/btget)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/UtkarshTheDev/btget/workflows/CI/badge.svg)](https://github.com/UtkarshTheDev/btget/actions)
+<!-- Package & Release Badges -->
+[![npm version](https://img.shields.io/npm/v/btget.svg?style=flat-square&logo=npm)](https://www.npmjs.com/package/btget)
+[![npm downloads](https://img.shields.io/npm/dm/btget.svg?style=flat-square)](https://npmjs.org/package/btget)
+[![GitHub release](https://img.shields.io/github/v/release/UtkarshTheDev/btget?style=flat-square&logo=github)](https://github.com/UtkarshTheDev/btget/releases)
+[![GitHub Release Date](https://img.shields.io/github/release-date/UtkarshTheDev/btget?style=flat-square)](https://github.com/UtkarshTheDev/btget/releases)
+
+<!-- Build & Quality Badges -->
+[![CI](https://img.shields.io/github/actions/workflow/status/UtkarshTheDev/btget/ci.yml?branch=main&style=flat-square&logo=github-actions&label=CI)](https://github.com/UtkarshTheDev/btget/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/UtkarshTheDev/btget/release.yml?style=flat-square&logo=github-actions&label=Release)](https://github.com/UtkarshTheDev/btget/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/node/v/btget?style=flat-square&logo=node.js)](https://nodejs.org)
+
+<!-- Repository Stats -->
+[![GitHub stars](https://img.shields.io/github/stars/UtkarshTheDev/btget?style=flat-square&logo=github)](https://github.com/UtkarshTheDev/btget/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/UtkarshTheDev/btget?style=flat-square&logo=github)](https://github.com/UtkarshTheDev/btget/issues)
+[![GitHub pull requests](https://img.shields.io/github/issues-pr/UtkarshTheDev/btget?style=flat-square&logo=github)](https://github.com/UtkarshTheDev/btget/pulls)
+[![Package Size](https://img.shields.io/bundlephobia/min/btget?style=flat-square)](https://bundlephobia.com/package/btget)
 
 </div>
 
