@@ -7,10 +7,12 @@ import type {
 import type { UploadManager } from "../core/modules/UploadManager";
 import type Pieces from "../pieces/Pieces";
 import {
+	buildBitfield,
 	buildHandshake,
 	buildInterested,
 	buildKeepAlive,
 	buildRequest,
+	buildUnchoke,
 } from "../protocol/messages";
 import type Queue from "../queue/Queue";
 import type { Peer, Torrent } from "../types/index";
@@ -165,6 +167,23 @@ export class PeerManager {
 					handshakeComplete = true;
 					this.connectedPeers++;
 					messageBuffer = messageBuffer.slice(this.HANDSHAKE_LENGTH);
+
+					// FIX #5: Register peer early for uploads
+					this.uploadManager.registerPeerEarly(peerId);
+
+					// FIX #5: Send our bitfield to let peer know what we have
+					const bitfield = this.pieces.getBitfield();
+					socket.write(buildBitfield(bitfield));
+					console.log(`📤 Sent BITFIELD to ${peerId}`);
+
+					// FIX #5: Quick unchoke after 2 seconds to allow uploads
+					setTimeout(() => {
+						if (!socket.destroyed) {
+							this.uploadManager.quickUnchokePeer(peerId);
+						}
+					}, 2000);
+
+					// Send interested message
 					socket.write(buildInterested());
 
 					setTimeout(() => {

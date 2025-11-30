@@ -85,6 +85,49 @@ export class UploadManager {
 	}
 
 	/**
+	 * Register peer early (before they send requests)
+	 * This prevents "peer not registered" errors
+	 */
+	registerPeerEarly(peerId: string): void {
+		if (!this.peerStats.has(peerId)) {
+			const now = Date.now();
+			this.peerStats.set(peerId, {
+				peerId,
+				downloadRate: 0,
+				lastDownloadTime: now,
+				bytesDownloadedFromPeer: 0,
+				bytesUploadedToPeer: 0,
+				uploadRate: 0,
+				lastUploadTime: now,
+				isChoked: true, // Start choked, will be unchoked by choking round
+			});
+			console.log(
+				`✅ Early registered peer ${peerId}. Total peers: ${this.peerStats.size}`,
+			);
+		}
+	}
+
+	/**
+	 * Quickly unchoke a specific peer (for bootstrap)
+	 */
+	quickUnchokePeer(peerId: string): void {
+		const stats = this.peerStats.get(peerId);
+		if (stats) {
+			stats.isChoked = false;
+			console.log(`🔓 Quick unchoked peer ${peerId}`);
+
+			// Send unchoke message immediately
+			if (this.allSockets) {
+				const socket = this.allSockets.get(peerId);
+				if (socket && !socket.destroyed) {
+					socket.write(buildUnchoke());
+					console.log(`📤 Sent UNCHOKE to ${peerId}`);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Handle incoming REQUEST message from peer
 	 */
 	async handlePeerRequest(
@@ -100,17 +143,20 @@ export class UploadManager {
 			return;
 		}
 
-		const stats = this.peerStats.get(socket.peerId);
-
-		// Only serve pieces to unchoked peers
+		// FIX #4: Register peer early if not already registered
+		let stats = this.peerStats.get(socket.peerId);
 		if (!stats) {
-			console.log(`❌ No stats for peer ${socket.peerId} (not registered)`);
-			console.log(
-				`   Registered peers: ${Array.from(this.peerStats.keys()).join(", ")}`,
-			);
+			console.log(`⚠️  Peer ${socket.peerId} not registered, registering early`);
+			this.registerPeerEarly(socket.peerId);
+			stats = this.peerStats.get(socket.peerId);
+		}
+
+		if (!stats) {
+			console.log(`❌ Failed to register peer ${socket.peerId}`);
 			return;
 		}
 
+		// Only serve pieces to unchoked peers
 		if (stats.isChoked) {
 			console.log(`❌ Peer ${socket.peerId} is CHOKED - rejecting request`);
 			return;

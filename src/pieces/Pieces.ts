@@ -242,4 +242,28 @@ export default class Pieces {
 			piece[blockIndex] = false;
 		}
 	}
+
+	/**
+	 * Get bitfield representing which pieces we have
+	 * Returns a Buffer where each bit represents a piece (1 = have, 0 = don't have)
+	 */
+	getBitfield(): Buffer {
+		const totalPieces = this._received.length;
+		const byteCount = Math.ceil(totalPieces / 8);
+		const bitfield = Buffer.alloc(byteCount);
+
+		for (let pieceIndex = 0; pieceIndex < totalPieces; pieceIndex++) {
+			// Check if piece is verified (not just received)
+			if (this._verifier.isVerified(pieceIndex)) {
+				const byteIndex = Math.floor(pieceIndex / 8);
+				const bitIndex = 7 - (pieceIndex % 8); // MSB first
+				const currentByte = bitfield[byteIndex];
+				if (currentByte !== undefined) {
+					bitfield[byteIndex] = currentByte | (1 << bitIndex);
+				}
+			}
+		}
+
+		return bitfield;
+	}
 }
