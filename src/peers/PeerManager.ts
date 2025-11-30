@@ -12,7 +12,6 @@ import {
 	buildInterested,
 	buildKeepAlive,
 	buildRequest,
-	buildUnchoke,
 } from "../protocol/messages";
 import type Queue from "../queue/Queue";
 import type { Peer, Torrent } from "../types/index";

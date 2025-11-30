@@ -34,10 +34,8 @@ export class MessageHandler {
 	private readonly REQUEST_ARGS_COUNT = 3;
 	private readonly EMA_ALPHA = 0.3;
 	private readonly EMA_DECAY = 0.7;
-	private readonly RTT_VERY_FAST_THRESHOLD = 100;
 	private readonly RTT_FAST_THRESHOLD = 300;
 	private readonly RTT_SLOW_THRESHOLD = 800;
-	private readonly INITIAL_PIPELINE = 32;
 	private readonly MAX_PIPELINE = 100;
 	private readonly MIN_PIPELINE = 8;
 	private readonly MS_PER_SEC = 1000;
@@ -259,16 +257,29 @@ export class MessageHandler {
 			this.uploadManager.trackPeerDownloadRate(socket.peerId, block.length);
 		}
 
-		// Update peer stats
+		// Update peer stats - use 1-second rolling window for accurate speed
 		socket.downloaded = (socket.downloaded ?? 0) + block.length;
-		const duration = (now - (socket.lastMeasureTime ?? now)) / this.MS_PER_SEC;
-		if (duration > 0) {
-			// Simple speed calculation (bytes/sec) - exponential moving average could be better but this is simple
-			const currentSpeed = block.length / duration;
-			socket.speed = currentSpeed; // For now just instantaneous speed of this block
-			socket.lastMeasureTime = now;
-		} else {
-			socket.lastMeasureTime = now;
+
+		// Initialize speed tracking if not present
+		if (!socket.speedWindowStart) {
+			socket.speedWindowStart = now;
+			socket.speedWindowBytes = 0;
+		}
+
+		// Add bytes to current window
+		socket.speedWindowBytes = (socket.speedWindowBytes ?? 0) + block.length;
+
+		// Calculate speed over 1-second window
+		const windowDuration = (now - socket.speedWindowStart) / this.MS_PER_SEC;
+		if (windowDuration >= 1.0) {
+			// We have at least 1 second of data - calculate speed
+			socket.speed = socket.speedWindowBytes / windowDuration;
+			// Reset window
+			socket.speedWindowStart = now;
+			socket.speedWindowBytes = 0;
+		} else if (!socket.speed) {
+			// First block - set initial speed estimate
+			socket.speed = 0;
 		}
 
 		// Fix 3: Aggressively request multiple batches to eliminate stop-and-wait

@@ -20,7 +20,8 @@ export interface ExtendedSocket extends Socket {
 	// Speed tracking
 	downloaded?: number;
 	speed?: number;
-	lastMeasureTime?: number;
+	speedWindowStart?: number; // Timestamp when current speed window started
+	speedWindowBytes?: number; // Bytes received in current speed window
 	// Adaptive pipelining (Fix 2)
 	maxPipeline?: number; // Dynamic pipeline depth (2-50)
 	rollingLatency?: number; // Exponential moving average of RTT in ms
