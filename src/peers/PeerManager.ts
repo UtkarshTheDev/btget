@@ -125,7 +125,7 @@ export class PeerManager {
 		socket.choked = true;
 		socket.activeRequests = new Map();
 		// Fix 2: Initialize adaptive pipelining fields
-		socket.maxPipeline = 10; // Start with default, will adapt based on RTT
+		socket.maxPipeline = 32; // Start with aggressive pipelining (INITIAL_PIPELINE)
 		socket.rollingLatency = undefined;
 		socket.requestTimestamps = new Map();
 
@@ -251,18 +251,17 @@ export class PeerManager {
 	}
 
 	/**
-	 * Request pieces from a peer
+	 * Request a batch of pieces from a peer in one go
+	 * This reduces per-request overhead and keeps the pipeline full
 	 */
-	requestPieces(socket: ExtendedSocket): void {
+	private requestBatchFromPeer(
+		socket: ExtendedSocket,
+		batchSize: number,
+	): void {
 		if (!socket.activeRequests) socket.activeRequests = new Map();
 		if (!socket.requestTimestamps) socket.requestTimestamps = new Map();
 
-		const maxPipeline = this.endgameManager.getMaxPipeline(socket);
-
-		while (
-			(socket.pendingRequests ?? 0) < maxPipeline &&
-			this.queue.length() > 0
-		) {
+		for (let i = 0; i < batchSize; i++) {
 			const pieceBlock = this.queue.deque(socket.availablePieces);
 			if (!pieceBlock) break;
 
@@ -277,7 +276,6 @@ export class PeerManager {
 						block: pieceBlock,
 						requestedAt: Date.now(),
 					});
-					// Fix 2: Track request timestamp for RTT measurement
 					socket.requestTimestamps.set(blockKey, Date.now());
 					this.pieces.addRequested(pieceBlock);
 					socket.pendingRequests = (socket.pendingRequests ?? 0) + 1;
@@ -286,6 +284,26 @@ export class PeerManager {
 					break;
 				}
 			}
+		}
+	}
+
+	/**
+	 * Request pieces from a peer
+	 */
+	requestPieces(socket: ExtendedSocket): void {
+		if (!socket.activeRequests) socket.activeRequests = new Map();
+		if (!socket.requestTimestamps) socket.requestTimestamps = new Map();
+
+		const maxPipeline = this.endgameManager.getMaxPipeline(socket);
+		const currentPending = socket.pendingRequests ?? 0;
+
+		// Calculate how many slots are available in the pipeline
+		const availableSlots = Math.max(0, maxPipeline - currentPending);
+
+		if (availableSlots > 0) {
+			// Request in batches of 16, or whatever fits in available slots
+			const batchSize = Math.min(16, availableSlots);
+			this.requestBatchFromPeer(socket, batchSize);
 		}
 	}
 

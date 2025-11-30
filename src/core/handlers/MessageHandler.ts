@@ -34,10 +34,12 @@ export class MessageHandler {
 	private readonly REQUEST_ARGS_COUNT = 3;
 	private readonly EMA_ALPHA = 0.3;
 	private readonly EMA_DECAY = 0.7;
-	private readonly RTT_FAST_THRESHOLD = 500;
-	private readonly RTT_SLOW_THRESHOLD = 1000;
-	private readonly MAX_PIPELINE = 50;
-	private readonly MIN_PIPELINE = 2;
+	private readonly RTT_VERY_FAST_THRESHOLD = 100;
+	private readonly RTT_FAST_THRESHOLD = 300;
+	private readonly RTT_SLOW_THRESHOLD = 800;
+	private readonly INITIAL_PIPELINE = 32;
+	private readonly MAX_PIPELINE = 100;
+	private readonly MIN_PIPELINE = 8;
 	private readonly MS_PER_SEC = 1000;
 	private readonly BITS_PER_BYTE = 8;
 
@@ -269,9 +271,11 @@ export class MessageHandler {
 			socket.lastMeasureTime = now;
 		}
 
-		// Fix 1: Immediately request more pieces to keep pipeline full (eliminate stop-and-wait)
+		// Fix 3: Aggressively request multiple batches to eliminate stop-and-wait
 		if (requestMorePieces && !socket.choked && !socket.destroyed) {
-			requestMorePieces(socket);
+			for (let i = 0; i < 5; i++) {
+				requestMorePieces(socket);
+			}
 		}
 	}
 
