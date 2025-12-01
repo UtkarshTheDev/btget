@@ -244,10 +244,15 @@ export class MessageHandler {
 		// 🔒 SECURITY FIX: Check if piece is complete and verify hash
 		// The broadcastHave() will be called automatically via callback AFTER verification
 		// This prevents "swarm poisoning" by ensuring we never advertise corrupt data
-		pieces.isPieceDone(pieceIndex);
+		const isPieceComplete = pieces.isPieceDone(pieceIndex);
 
 		// Write to disk
 		await this.fileWriter.writeBlock(pieceIndex, begin, block);
+
+		// FIX #4: Clear piece buffer after verification and write to free memory
+		if (isPieceComplete) {
+			pieces.clearPieceData(pieceIndex);
+		}
 
 		// Update download counter
 		this.totalDownloaded += block.length;
@@ -293,21 +298,38 @@ export class MessageHandler {
 	/**
 	 * Broadcast HAVE message to all connected peers
 	 * 🔒 SECURITY: Only call this AFTER piece has been SHA1-verified
+	 * ✅ SAFETY: Guard against sending to disconnected peers
 	 */
 	broadcastHave(
 		pieceIndex: number,
-		allSockets: Map<string, ExtendedSocket>,
+		allSockets: Map<string, ExtendedSocket> | null,
 	): void {
+		// FIX #5: Guard - No peers connected yet
+		if (!allSockets || allSockets.size === 0) {
+			// Skip broadcast, we'll send BITFIELD when peers connect
+			return;
+		}
+
 		const haveMessage = buildHave(pieceIndex);
+		let sentCount = 0;
+
 		allSockets.forEach((socket) => {
 			if (!socket.destroyed && socket.writable) {
 				try {
 					socket.write(haveMessage);
+					sentCount++;
 				} catch (_error) {
 					// Silently ignore write errors
 				}
 			}
 		});
+
+		// Debug log (only if peers were notified)
+		if (sentCount > 0) {
+			console.log(
+				`📢 Broadcast HAVE piece ${pieceIndex} to ${sentCount} peers`,
+			);
+		}
 	}
 
 	/**

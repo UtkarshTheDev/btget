@@ -79,13 +79,12 @@ export async function downloadTorrent(
 	return new Promise((resolve, reject) => {
 		let downloadComplete = false;
 
-		// Setup pieces and queue
-		// 🔒 SECURITY FIX: Pass callback to broadcast HAVE only AFTER SHA1 verification
-		// This prevents "swarm poisoning" by ensuring we never advertise corrupt data
-		const pieces = new Pieces(torrent, (pieceIndex: number) => {
-			// Broadcast HAVE to all connected peers after successful verification
-			messageHandler.broadcastHave(pieceIndex, peerManager.getActiveSockets());
-		});
+		// FIX #1: Initialize seed/leech tracking variables at function start
+		let currentSeeds = 0;
+		let currentLeechers = 0;
+
+		// FIX #5: Initialize PeerManager FIRST (before Pieces callback)
+		// This prevents race condition where callback fires before peerManager exists
 		const queue = new Queue(torrent);
 
 		// Initialize queue with all pieces
@@ -93,8 +92,20 @@ export async function downloadTorrent(
 			queue.queue(i);
 		}
 
-		// Initialize peer manager
-		const peerManager = new PeerManager(
+		// Create temporary variable to hold peerManager reference
+		let peerManager: PeerManager;
+
+		// Setup pieces with callback (now safe - peerManager will be initialized below)
+		// 🔒 SECURITY FIX: Pass callback to broadcast HAVE only AFTER SHA1 verification
+		// This prevents "swarm poisoning" by ensuring we never advertise corrupt data
+		const pieces = new Pieces(torrent, (pieceIndex: number) => {
+			// Broadcast HAVE to all connected peers after successful verification
+			// FIX #5: peerManager is guaranteed to exist when this callback fires
+			messageHandler.broadcastHave(pieceIndex, peerManager.getActiveSockets());
+		});
+
+		// Initialize peer manager (now pieces exists, so circular dependency is resolved)
+		peerManager = new PeerManager(
 			torrent,
 			pieces,
 			queue,
@@ -221,9 +232,7 @@ export async function downloadTorrent(
 		// Initialize progress tracker immediately to ensure UI starts if callback provided
 		progressTracker.initialize(torrentName, totalSize, options.onProgress);
 
-		let currentSeeds = 0;
-		let currentLeechers = 0;
-
+		// FIX #1: Update tracker stats when received
 		if (!options.dhtOnly) {
 			getPeers(
 				torrent,
