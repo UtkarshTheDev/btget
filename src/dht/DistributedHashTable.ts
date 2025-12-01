@@ -13,6 +13,13 @@ export class DistributedHashTable extends EventEmitter {
 	private routingTable: RoutingTable;
 	private readonly localId: Buffer;
 	private isStopped = false; // Track if DHT has been stopped
+
+	// FIX #6: Bootstrap retry configuration
+	private bootstrapAttempts = 0;
+	private readonly MAX_BOOTSTRAP_ATTEMPTS = 3;
+	private readonly BOOTSTRAP_TIMEOUT_MS = 10000; // 10 seconds
+	private bootstrapInProgress = false;
+
 	private readonly BOOTSTRAP_NODES = [
 		{ host: "router.bittorrent.com", port: 6881 },
 		{ host: "dht.transmissionbt.com", port: 6881 },
@@ -41,12 +48,127 @@ export class DistributedHashTable extends EventEmitter {
 		const port = options.port || this.DEFAULT_PORT;
 		this.socket.bind(port, () => {
 			// console.log(`DHT listening on port ${port}`);
-			this.bootstrap();
+			this.startBootstrap();
 		});
 	}
 
 	/**
-	 * Bootstrap DHT by connecting to public nodes
+	 * FIX #6: Start bootstrap with retry logic
+	 */
+	private async startBootstrap(): Promise<void> {
+		if (this.bootstrapInProgress) return;
+		this.bootstrapInProgress = true;
+
+		while (this.bootstrapAttempts < this.MAX_BOOTSTRAP_ATTEMPTS) {
+			try {
+				const attempt = this.bootstrapAttempts + 1;
+				console.log(
+					`🌐 DHT Bootstrap attempt ${attempt}/${this.MAX_BOOTSTRAP_ATTEMPTS}`,
+				);
+
+				// Perform bootstrap with timeout
+				await Promise.race([
+					this.performBootstrap(),
+					new Promise<void>((_, reject) =>
+						setTimeout(
+							() => reject(new Error("Bootstrap timeout")),
+							this.BOOTSTRAP_TIMEOUT_MS,
+						),
+					),
+				]);
+
+				console.log(`✅ DHT Bootstrap successful (attempt ${attempt})`);
+				this.emit("bootstrap-success");
+				this.bootstrapInProgress = false;
+				return;
+			} catch {
+				this.bootstrapAttempts++;
+
+				if (this.bootstrapAttempts < this.MAX_BOOTSTRAP_ATTEMPTS) {
+					// Exponential backoff: 1s, 2s, 4s
+					const backoffMs = 1000 * 2 ** (this.bootstrapAttempts - 1);
+					console.warn(
+						`⚠️  Bootstrap attempt ${this.bootstrapAttempts} failed, ` +
+							`retrying in ${backoffMs}ms...`,
+					);
+
+					await new Promise((resolve) => setTimeout(resolve, backoffMs));
+				}
+			}
+		}
+
+		// All attempts failed
+		console.warn(
+			"❌ DHT Bootstrap failed after 3 attempts, relying on trackers",
+		);
+		this.emit("bootstrap-failed");
+		this.bootstrapInProgress = false;
+	}
+
+	/**
+	 * FIX #6: Perform actual bootstrap
+	 */
+	private async performBootstrap(): Promise<void> {
+		const bootstrapPromises = this.BOOTSTRAP_NODES.map(
+			(node) =>
+				this.findNodeAsync(node.host, node.port, this.localId).catch(
+					() => null,
+				), // Don't throw on individual failures
+		);
+
+		const results = await Promise.all(bootstrapPromises);
+		const successCount = results.filter((r) => r !== null).length;
+
+		if (successCount === 0) {
+			throw new Error("No bootstrap nodes responded");
+		}
+	}
+
+	/**
+	 * FIX #6: Async version of findNode for bootstrap
+	 */
+	private findNodeAsync(
+		host: string,
+		port: number,
+		target: Buffer,
+	): Promise<void> {
+		return new Promise((resolve, reject) => {
+			const tid = crypto.randomBytes(this.TRANSACTION_ID_LENGTH);
+			const msg = {
+				t: tid,
+				y: "q",
+				q: "find_node",
+				a: {
+					id: this.localId,
+					target: target,
+				},
+			};
+
+			// Set up one-time listener for response
+			const timeout = setTimeout(() => {
+				reject(new Error("Node timeout"));
+			}, 5000);
+
+			const responseHandler = (response: Buffer) => {
+				try {
+					const decoded = bencode.decode(response);
+					if (decoded.t?.equals(tid)) {
+						clearTimeout(timeout);
+						this.socket.off("message", responseHandler);
+						resolve();
+					}
+				} catch {
+					// Ignore decode errors
+				}
+			};
+
+			this.socket.on("message", responseHandler);
+			this.send(msg, host, port);
+		});
+	}
+
+	/**
+	 * Bootstrap DHT by connecting to public nodes (legacy method)
 	 */
 	private bootstrap(): void {
 		this.BOOTSTRAP_NODES.forEach((node) => {

@@ -25,7 +25,16 @@ export class PeerManager {
 	private peerQueue: Peer[] = [];
 	private activePeers = 0;
 	private connectedPeers = 0;
-	private readonly MAX_CONNECTIONS = 50;
+
+	// FIX #7: Connection pooling configuration
+	private readonly MAX_CONNECTIONS = 50; // Total peers
+	private readonly MAX_CONCURRENT_CONNECTIONS = 20; // Concurrent connection attempts
+	private connectingCount = 0; // Track ongoing connection attempts
+	private failedPeers = new Map<
+		string,
+		{ attempts: number; lastTry: number }
+	>(); // Exponential backoff
+
 	private connectionInterval: NodeJS.Timeout;
 	private keepAliveInterval: NodeJS.Timeout;
 	private healthCheckInterval: NodeJS.Timeout;
@@ -33,6 +42,7 @@ export class PeerManager {
 	private readonly KEEP_ALIVE_INTERVAL = 90000;
 	private readonly HEALTH_CHECK_INTERVAL = 30000;
 	private readonly SOCKET_TIMEOUT = 120000;
+	private readonly CONNECTION_TIMEOUT_MS = 5000; // FIX #7: 5 second connection timeout
 	private readonly HANDSHAKE_LENGTH = 68;
 	private readonly PROTOCOL_ID_LENGTH = 19;
 	private readonly PROTOCOL_STRING_START = 1;
@@ -86,11 +96,29 @@ export class PeerManager {
 
 	/**
 	 * Add new peers to the pool
+	 * FIX #8: Validate IPs before adding
 	 */
 	addPeers(peers: Peer[]): void {
 		peers.forEach((peer) => {
+			// FIX #8: Validate IP address
+			if (!this.isValidPeerIP(peer.ip)) {
+				return; // Skip invalid IPs
+			}
+
+			// FIX #8: Validate port
+			if (peer.port < 1024 || peer.port > 65535) {
+				return; // Skip invalid ports
+			}
+
 			const peerId = `${peer.ip}:${peer.port}`;
+
+			// Check if already known
 			if (!this.knownPeers.has(peerId)) {
+				// FIX #7: Check if should retry failed peer
+				if (!this.shouldRetryPeer(peer.ip, peer.port)) {
+					return; // Skip recently failed peer
+				}
+
 				this.knownPeers.add(peerId);
 				this.peerQueue.push(peer);
 			}
@@ -100,172 +128,206 @@ export class PeerManager {
 
 	/**
 	 * Manage peer connections (auto-connect if slots available)
+	 * FIX #7: Respect concurrent connection limit
 	 */
 	private manageConnections(): void {
 		while (
 			this.activePeers < this.MAX_CONNECTIONS &&
+			this.connectingCount < this.MAX_CONCURRENT_CONNECTIONS &&
 			this.peerQueue.length > 0
 		) {
 			const peer = this.peerQueue.shift();
 			if (peer) {
-				this.connectToPeer(peer);
+				this.connectingCount++;
+				this.connectToPeer(peer).finally(() => {
+					this.connectingCount--;
+					// Process next in queue
+					this.manageConnections();
+				});
 			}
 		}
 	}
 
 	/**
 	 * Connect to a peer
+	 * FIX #7: Return Promise for connection pooling
 	 */
-	private connectToPeer(peer: Peer): void {
-		const socket = new Socket() as ExtendedSocket;
-		const peerId = `${peer.ip}:${peer.port}`;
+	private connectToPeer(peer: Peer): Promise<void> {
+		return new Promise((resolve) => {
+			const socket = new Socket() as ExtendedSocket;
+			const peerId = `${peer.ip}:${peer.port}`;
 
-		socket.peerId = peerId;
-		socket.pendingRequests = 0;
-		socket.lastData = Date.now();
-		socket.choked = true;
-		socket.activeRequests = new Map();
-		// Fix 2: Initialize adaptive pipelining fields
-		socket.maxPipeline = 32; // Start with aggressive pipelining (INITIAL_PIPELINE)
-		socket.rollingLatency = undefined;
-		socket.requestTimestamps = new Map();
-
-		// Configure socket
-		socket.setKeepAlive(true, this.HEALTH_CHECK_INTERVAL);
-		socket.setNoDelay(true);
-		socket.setTimeout(this.SOCKET_TIMEOUT); // Increased from 30s to 120s for large files
-
-		let handshakeComplete = false;
-		let messageBuffer = Buffer.alloc(0);
-
-		// Connect event
-		socket.on("connect", () => {
-			this.activePeers++;
-			this.activeSockets.set(peerId, socket);
-			socket.write(buildHandshake(this.torrent));
-			// Register peer with upload manager
-			this.uploadManager.registerPeer(peerId);
-		});
-
-		// Data event
-		socket.on("data", (data: Buffer) => {
+			socket.peerId = peerId;
+			socket.pendingRequests = 0;
 			socket.lastData = Date.now();
-			messageBuffer = Buffer.concat([messageBuffer, data]);
+			socket.choked = true;
+			socket.activeRequests = new Map();
+			// Fix 2: Initialize adaptive pipelining fields
+			socket.maxPipeline = 32; // Start with aggressive pipelining (INITIAL_PIPELINE)
+			socket.rollingLatency = undefined;
+			socket.requestTimestamps = new Map();
 
-			// Handle handshake
-			if (!handshakeComplete && messageBuffer.length >= this.HANDSHAKE_LENGTH) {
-				const handshakeData = messageBuffer.slice(0, this.HANDSHAKE_LENGTH);
-				if (
-					handshakeData[0] === this.PROTOCOL_ID_LENGTH &&
-					handshakeData.toString(
-						"utf8",
-						this.PROTOCOL_STRING_START,
-						this.PROTOCOL_STRING_END,
-					) === this.PROTOCOL_STRING
-				) {
-					handshakeComplete = true;
-					this.connectedPeers++;
-					messageBuffer = messageBuffer.slice(this.HANDSHAKE_LENGTH);
+			// Configure socket
+			socket.setKeepAlive(true, this.HEALTH_CHECK_INTERVAL);
+			socket.setNoDelay(true);
+			socket.setTimeout(this.SOCKET_TIMEOUT); // Increased from 30s to 120s for large files
 
-					// FIX #5: Register peer early for uploads
-					this.uploadManager.registerPeerEarly(peerId);
+			let handshakeComplete = false;
+			let messageBuffer = Buffer.alloc(0);
+			let connectionResolved = false;
 
-					// FIX #5: Send our bitfield to let peer know what we have
-					const bitfield = this.pieces.getBitfield();
-					socket.write(buildBitfield(bitfield));
-					console.log(`📤 Sent BITFIELD to ${peerId}`);
-
-					// FIX #5: Quick unchoke after 2 seconds to allow uploads
-					setTimeout(() => {
-						if (!socket.destroyed) {
-							this.uploadManager.quickUnchokePeer(peerId);
-						}
-					}, 2000);
-
-					// Send interested message
-					socket.write(buildInterested());
-
-					setTimeout(() => {
-						if (!socket.destroyed) {
-							this.requestPieces(socket);
-						}
-					}, this.REQUEST_TIMEOUT_MS);
-				} else {
+			// FIX #7: Connection timeout
+			const connectionTimeout = setTimeout(() => {
+				if (!connectionResolved) {
+					connectionResolved = true;
+					this.recordPeerFailure(peer.ip, peer.port);
 					socket.destroy();
-					return;
+					resolve();
 				}
-			}
+			}, this.CONNECTION_TIMEOUT_MS);
 
-			// Process messages
-			if (handshakeComplete) {
-				const consumed = this.messageHandler.processMessages(
-					socket,
-					messageBuffer,
-					this.pieces,
-					this.queue,
-					this.activeSockets,
-					// Fix 1: Pass requestPieces callback for immediate request triggering
-					(s) => this.requestPieces(s),
-				);
-				messageBuffer = messageBuffer.slice(consumed);
-
-				// Send choke/unchoke messages based on upload manager decisions
-				this.uploadManager.sendChokeMessages(this.activeSockets);
-
-				// Request more pieces if unchoked
-				if (!socket.choked && !socket.destroyed) {
-					this.requestPieces(socket);
+			// Connect event
+			socket.on("connect", () => {
+				clearTimeout(connectionTimeout);
+				if (!connectionResolved) {
+					connectionResolved = true;
+					resolve();
 				}
-			}
-		});
+				this.activePeers++;
+				this.activeSockets.set(peerId, socket);
+				socket.write(buildHandshake(this.torrent));
+				// Register peer with upload manager
+				this.uploadManager.registerPeer(peerId);
+			});
 
-		// Error event
-		socket.on("error", () => {
-			// Silently handle errors
-		});
+			// Data event
+			socket.on("data", (data: Buffer) => {
+				socket.lastData = Date.now();
+				messageBuffer = Buffer.concat([messageBuffer, data]);
 
-		// Timeout event
-		socket.on("timeout", () => {
-			socket.destroy();
-		});
+				// Handle handshake
+				if (
+					!handshakeComplete &&
+					messageBuffer.length >= this.HANDSHAKE_LENGTH
+				) {
+					const handshakeData = messageBuffer.slice(0, this.HANDSHAKE_LENGTH);
+					if (
+						handshakeData[0] === this.PROTOCOL_ID_LENGTH &&
+						handshakeData.toString(
+							"utf8",
+							this.PROTOCOL_STRING_START,
+							this.PROTOCOL_STRING_END,
+						) === this.PROTOCOL_STRING
+					) {
+						handshakeComplete = true;
+						this.connectedPeers++;
+						messageBuffer = messageBuffer.slice(this.HANDSHAKE_LENGTH);
 
-		// Close event
-		socket.on("close", () => {
-			if (this.activeSockets.has(peerId)) {
-				this.activeSockets.delete(peerId);
-				this.activePeers = Math.max(0, this.activePeers - 1);
-				if (handshakeComplete) {
-					this.connectedPeers = Math.max(0, this.connectedPeers - 1);
-				}
-			}
+						// FIX #5: Register peer early for uploads
+						this.uploadManager.registerPeerEarly(peerId);
 
-			// Remove peer from upload manager
-			this.uploadManager.removePeer(peerId);
+						// FIX #5: Send our bitfield to let peer know what we have
+						const bitfield = this.pieces.getBitfield();
+						socket.write(buildBitfield(bitfield));
+						console.log(`📤 Sent BITFIELD to ${peerId}`);
 
-			// Remove peer from queue tracking
-			if (socket.peerId) {
-				this.queue.removePeer(socket.peerId);
-			}
+						// FIX #5: Quick unchoke after 2 seconds to allow uploads
+						setTimeout(() => {
+							if (!socket.destroyed) {
+								this.uploadManager.quickUnchokePeer(peerId);
+							}
+						}, 2000);
 
-			// Re-queue pending requests
-			if (socket.activeRequests && socket.activeRequests.size > 0) {
-				socket.activeRequests.forEach((req) => {
-					this.pieces.removeRequested(req.block);
-					this.queue.queueFront(req.block);
-				});
-				socket.activeRequests.clear();
+						// Send interested message
+						socket.write(buildInterested());
 
-				// Trigger requests on other peers
-				this.activeSockets.forEach((s) => {
-					if (!s.destroyed && !s.choked) {
-						this.requestPieces(s);
+						setTimeout(() => {
+							if (!socket.destroyed) {
+								this.requestPieces(socket);
+							}
+						}, this.REQUEST_TIMEOUT_MS);
+					} else {
+						socket.destroy();
+						return;
 					}
-				});
-			}
-		});
+				}
 
-		// Connect
-		socket.connect(peer.port, peer.ip);
+				// Process messages
+				if (handshakeComplete) {
+					const consumed = this.messageHandler.processMessages(
+						socket,
+						messageBuffer,
+						this.pieces,
+						this.queue,
+						this.activeSockets,
+						// Fix 1: Pass requestPieces callback for immediate request triggering
+						(s) => this.requestPieces(s),
+					);
+					messageBuffer = messageBuffer.slice(consumed);
+
+					// Send choke/unchoke messages based on upload manager decisions
+					this.uploadManager.sendChokeMessages(this.activeSockets);
+
+					// Request more pieces if unchoked
+					if (!socket.choked && !socket.destroyed) {
+						this.requestPieces(socket);
+					}
+				}
+			});
+
+			// Error event - record failure
+			socket.on("error", () => {
+				this.recordPeerFailure(peer.ip, peer.port);
+				if (!connectionResolved) {
+					connectionResolved = true;
+					clearTimeout(connectionTimeout);
+					resolve();
+				}
+			});
+
+			// Timeout event
+			socket.on("timeout", () => {
+				socket.destroy();
+			});
+
+			// Close event
+			socket.on("close", () => {
+				if (this.activeSockets.has(peerId)) {
+					this.activeSockets.delete(peerId);
+					this.activePeers = Math.max(0, this.activePeers - 1);
+					if (handshakeComplete) {
+						this.connectedPeers = Math.max(0, this.connectedPeers - 1);
+					}
+				}
+
+				// Remove peer from upload manager
+				this.uploadManager.removePeer(peerId);
+
+				// Remove peer from queue tracking
+				if (socket.peerId) {
+					this.queue.removePeer(socket.peerId);
+				}
+
+				// Re-queue pending requests
+				if (socket.activeRequests && socket.activeRequests.size > 0) {
+					socket.activeRequests.forEach((req) => {
+						this.pieces.removeRequested(req.block);
+						this.queue.queueFront(req.block);
+					});
+					socket.activeRequests.clear();
+
+					// Trigger requests on other peers
+					this.activeSockets.forEach((s) => {
+						if (!s.destroyed && !s.choked) {
+							this.requestPieces(s);
+						}
+					});
+				}
+			});
+
+			// Connect
+			socket.connect(peer.port, peer.ip);
+		});
 	}
 
 	/**
@@ -412,6 +474,50 @@ export class PeerManager {
 				// Peer is stalled - destroy connection to free up slot
 				socket.destroy();
 			}
+		});
+	}
+
+	/**
+	 * FIX #8: Validate peer IP address
+	 * Reject private, reserved, and invalid IP ranges
+	 */
+	private isValidPeerIP(ip: string): boolean {
+		const invalidPatterns = [
+			/^127\./, // Loopback
+			/^192\.168\./, // Private
+			/^10\./, // Private
+			/^172\.(1[6-9]|2[0-9]|3[01])\./, // Private (172.16.0.0 - 172.31.255.255)
+			/^169\.254\./, // Link-local
+			/^224\./, // Multicast
+			/^255\./, // Broadcast
+			/^0\./, // Current network
+		];
+
+		return !invalidPatterns.some((pattern) => pattern.test(ip));
+	}
+
+	/**
+	 * FIX #7: Check if should retry peer (exponential backoff)
+	 */
+	private shouldRetryPeer(ip: string, port: number): boolean {
+		const key = `${ip}:${port}`;
+		const failed = this.failedPeers.get(key);
+		if (!failed) return true; // Never failed, should try
+
+		// Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 32s
+		const backoff = 1000 * 2 ** Math.min(failed.attempts, 5);
+		return Date.now() - failed.lastTry > backoff;
+	}
+
+	/**
+	 * FIX #7: Record peer connection failure for backoff
+	 */
+	private recordPeerFailure(ip: string, port: number): void {
+		const key = `${ip}:${port}`;
+		const existing = this.failedPeers.get(key) ?? { attempts: 0, lastTry: 0 };
+		this.failedPeers.set(key, {
+			attempts: existing.attempts + 1,
+			lastTry: Date.now(),
 		});
 	}
 }
