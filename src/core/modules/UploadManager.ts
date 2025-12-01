@@ -39,6 +39,14 @@ export class UploadManager {
 	private readonly MS_PER_SEC = 1000;
 	private readonly RANDOM_SORT_OFFSET = 0.5;
 
+	// FIX #10: Request validation constants
+	private readonly MAX_BLOCK_SIZE = 32768; // 32 KB
+	private readonly MAX_REQUESTS_PER_MINUTE = 1000;
+	private peerRequestCounts = new Map<
+		string,
+		{ count: number; windowStart: number }
+	>();
+
 	constructor(private fileWriter: FileWriter) {
 		this.startChokingAlgorithm();
 	}
@@ -129,6 +137,7 @@ export class UploadManager {
 
 	/**
 	 * Handle incoming REQUEST message from peer
+	 * FIX #10: Add request validation
 	 */
 	async handlePeerRequest(
 		socket: ExtendedSocket,
@@ -140,6 +149,24 @@ export class UploadManager {
 
 		if (!socket.peerId) {
 			console.log(`❌ No peerId on socket`);
+			return;
+		}
+
+		// FIX #10: Validate block size
+		if (request.length > this.MAX_BLOCK_SIZE || request.length <= 0) {
+			console.warn(
+				`❌ Invalid block size ${request.length} from ${socket.peerId} - disconnecting`,
+			);
+			socket.destroy();
+			return;
+		}
+
+		// FIX #10: Rate limiting
+		if (!this.checkRateLimit(socket.peerId)) {
+			console.warn(
+				`❌ Rate limit exceeded for ${socket.peerId} - disconnecting`,
+			);
+			socket.destroy();
 			return;
 		}
 
@@ -165,6 +192,9 @@ export class UploadManager {
 		console.log(`✅ Peer ${socket.peerId} is UNCHOKED - serving request`);
 
 		try {
+			// FIX #10: Validate bounds before reading
+			// This is handled by fileWriter.readPieceBlock which will throw if invalid
+
 			// Read the requested block from disk
 			const block = await this.fileWriter.readPieceBlock(
 				request.index,
@@ -203,6 +233,27 @@ export class UploadManager {
 		} catch (error) {
 			console.error(`❌ Upload error for ${socket.peerId}: ${error}`);
 		}
+	}
+
+	/**
+	 * FIX #10: Check rate limit for peer
+	 * @param peerId - Peer identifier
+	 * @returns true if within limit, false if exceeded
+	 */
+	private checkRateLimit(peerId: string): boolean {
+		const now = Date.now();
+		const windowMs = 60000; // 1 minute
+
+		const rateInfo = this.peerRequestCounts.get(peerId);
+
+		if (!rateInfo || now - rateInfo.windowStart > windowMs) {
+			// New window
+			this.peerRequestCounts.set(peerId, { count: 1, windowStart: now });
+			return true;
+		}
+
+		rateInfo.count++;
+		return rateInfo.count <= this.MAX_REQUESTS_PER_MINUTE;
 	}
 
 	/**
