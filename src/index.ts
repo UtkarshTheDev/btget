@@ -5,6 +5,7 @@ import { downloadTorrent } from "./core/download";
 import { infoHash, open, size } from "./protocol/parser";
 import type { File } from "./types/index";
 import { startUI } from "./ui/render";
+import Logger from "./utils/logger";
 
 const KB_CONVERSION = 1024;
 const BYTES_PER_MB = KB_CONVERSION * KB_CONVERSION;
@@ -72,6 +73,13 @@ if (isDirectDownload) {
 				const outputDirPath = path.resolve(args.output as string);
 				const dhtOnly = args.dhtOnly || args["dht-only"];
 				const debugMode = args.debug || args.d;
+
+				// Enable Logger based on debug flag
+				if (debugMode) {
+					Logger.enable();
+				} else {
+					Logger.disable();
+				}
 
 				// Initial setup without UI to read torrent info
 				const torrent = open(torrentFilePath);

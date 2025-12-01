@@ -1,6 +1,6 @@
 /**
- * FIX #11: Logger utility to control debug output
- * Only shows debug logs when --debug flag is enabled
+ * Logger utility to control debug output
+ * Only shows debug logs when debug mode is enabled
  */
 
 class Logger {
@@ -9,15 +9,22 @@ class Logger {
 	/**
 	 * Enable debug logging
 	 */
-	static enableDebug(): void {
+	static enable(): void {
 		Logger.debugEnabled = true;
 	}
 
 	/**
 	 * Disable debug logging
 	 */
-	static disableDebug(): void {
+	static disable(): void {
 		Logger.debugEnabled = false;
+	}
+
+	/**
+	 * Check if debug is enabled
+	 */
+	static isDebugEnabled(): boolean {
+		return Logger.debugEnabled;
 	}
 
 	/**

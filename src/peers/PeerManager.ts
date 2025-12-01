@@ -16,6 +16,14 @@ import {
 import type Queue from "../queue/Queue";
 import type { Peer, Torrent } from "../types/index";
 
+// PHASE 4: Peer ban tracking
+interface BannedPeer {
+	ip: string;
+	port: number;
+	reason: "corrupt_data" | "spam" | "timeout" | "protocol_violation";
+	bannedUntil: number;
+}
+
 /**
  * PeerManager handles peer connections, pooling, and lifecycle
  */
@@ -34,6 +42,10 @@ export class PeerManager {
 		string,
 		{ attempts: number; lastTry: number }
 	>(); // Exponential backoff
+
+	// PHASE 4: Peer banning system
+	private bannedPeers = new Map<string, BannedPeer>();
+	private readonly BAN_DURATION_MS = 3600000; // 1 hour
 
 	private connectionInterval: NodeJS.Timeout;
 	private keepAliveInterval: NodeJS.Timeout;
@@ -74,10 +86,10 @@ export class PeerManager {
 		);
 
 		// Start peer health monitoring (every 30 seconds)
-		this.healthCheckInterval = setInterval(
-			() => this.monitorPeerHealth(),
-			this.HEALTH_CHECK_INTERVAL,
-		);
+		this.healthCheckInterval = setInterval(() => {
+			this.monitorPeerHealth();
+			this.cleanupExpiredBans(); // PHASE 4: Clean up expired bans
+		}, this.HEALTH_CHECK_INTERVAL);
 	}
 
 	/**
@@ -108,6 +120,11 @@ export class PeerManager {
 			// FIX #8: Validate port
 			if (peer.port < 1024 || peer.port > 65535) {
 				return; // Skip invalid ports
+			}
+
+			// PHASE 4: Check if peer is banned
+			if (this.isBanned(peer.ip, peer.port)) {
+				return; // Skip banned peers
 			}
 
 			const peerId = `${peer.ip}:${peer.port}`;
@@ -519,5 +536,47 @@ export class PeerManager {
 			attempts: existing.attempts + 1,
 			lastTry: Date.now(),
 		});
+	}
+
+	/**
+	 * PHASE 4: Check if peer is banned
+	 */
+	private isBanned(ip: string, port: number): boolean {
+		const key = `${ip}:${port}`;
+		const ban = this.bannedPeers.get(key);
+		if (!ban) return false;
+
+		// Check if ban expired
+		if (Date.now() > ban.bannedUntil) {
+			this.bannedPeers.delete(key);
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * PHASE 4: Ban a peer for misbehavior
+	 */
+	banPeer(ip: string, port: number, reason: BannedPeer["reason"]): void {
+		const key = `${ip}:${port}`;
+		this.bannedPeers.set(key, {
+			ip,
+			port,
+			reason,
+			bannedUntil: Date.now() + this.BAN_DURATION_MS,
+		});
+		console.warn(`🚫 Banned peer ${ip}:${port} for ${reason} (1 hour)`);
+	}
+
+	/**
+	 * PHASE 4: Clean up expired bans (called periodically)
+	 */
+	private cleanupExpiredBans(): void {
+		const now = Date.now();
+		for (const [key, ban] of this.bannedPeers.entries()) {
+			if (now > ban.bannedUntil) {
+				this.bannedPeers.delete(key);
+			}
+		}
 	}
 }
