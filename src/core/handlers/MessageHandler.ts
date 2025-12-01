@@ -106,8 +106,52 @@ export class MessageHandler {
 
 	/**
 	 * Handle individual message by type
+	 * FIX #12: Improved error handling
 	 */
 	private handleMessage(
+		socket: ExtendedSocket,
+		messageId: number,
+		data: Buffer,
+		pieces: Pieces,
+		queue: Queue,
+		allSockets: Map<string, ExtendedSocket>,
+		requestMorePieces?: (socket: ExtendedSocket) => void,
+	): void {
+		// FIX #12: Initialize error counter if not exists
+		if (!socket.errorCount) {
+			socket.errorCount = 0;
+		}
+
+		try {
+			this.processMessage(
+				socket,
+				messageId,
+				data,
+				pieces,
+				queue,
+				allSockets,
+				requestMorePieces,
+			);
+		} catch (error) {
+			// FIX #12: Track errors and disconnect after threshold
+			socket.errorCount++;
+			console.warn(
+				`⚠️  Error processing message from ${socket.peerId}: ${error} (${socket.errorCount}/10)`,
+			);
+
+			if (socket.errorCount >= 10) {
+				console.error(
+					`❌ Too many errors from ${socket.peerId}, disconnecting`,
+				);
+				socket.destroy();
+			}
+		}
+	}
+
+	/**
+	 * FIX #12: Process message (extracted for error handling)
+	 */
+	private processMessage(
 		socket: ExtendedSocket,
 		messageId: number,
 		data: Buffer,

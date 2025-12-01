@@ -26,6 +26,8 @@ export interface ExtendedSocket extends Socket {
 	maxPipeline?: number; // Dynamic pipeline depth (2-50)
 	rollingLatency?: number; // Exponential moving average of RTT in ms
 	requestTimestamps?: Map<string, number>; // Track when each block was requested
+	// FIX #12: Error tracking
+	errorCount?: number; // Number of errors from this peer
 }
 
 /**

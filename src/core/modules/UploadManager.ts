@@ -15,6 +15,8 @@ interface PeerUploadStats {
 	uploadRate: number; // Bytes/sec we're uploading to this peer
 	lastUploadTime: number;
 	isChoked: boolean;
+	// FIX #14: Track last sent state to prevent redundant messages
+	lastSentChokeState?: boolean; // undefined = never sent, true = sent CHOKE, false = sent UNCHOKE
 }
 
 /**
@@ -374,6 +376,7 @@ export class UploadManager {
 
 	/**
 	 * Send choke/unchoke messages to peers based on current state
+	 * FIX #14: Only send when state changes
 	 */
 	sendChokeMessages(allSockets: Map<string, ExtendedSocket>): void {
 		console.log(
@@ -381,12 +384,19 @@ export class UploadManager {
 		);
 		let chokedCount = 0;
 		let unchokedCount = 0;
+		let skippedCount = 0;
 
 		for (const [peerId, stats] of this.peerStats.entries()) {
 			const socket = allSockets.get(peerId);
 			if (!socket || socket.destroyed) {
 				console.log(`⚠️  Peer ${peerId} has no socket or destroyed`);
 				continue;
+			}
+
+			// FIX #14: Only send if state changed
+			if (stats.lastSentChokeState === stats.isChoked) {
+				skippedCount++;
+				continue; // State hasn't changed, skip
 			}
 
 			try {
@@ -399,12 +409,16 @@ export class UploadManager {
 					unchokedCount++;
 					console.log(`📤 Sent UNCHOKE to ${peerId}`);
 				}
+				// FIX #14: Update last sent state
+				stats.lastSentChokeState = stats.isChoked;
 			} catch (error) {
 				console.error(`❌ Error sending message to ${peerId}: ${error}`);
 			}
 		}
 
-		console.log(`Summary: ${unchokedCount} unchoked, ${chokedCount} choked\n`);
+		console.log(
+			`Summary: ${unchokedCount} unchoked, ${chokedCount} choked, ${skippedCount} skipped (no change)\n`,
+		);
 	}
 
 	/**
