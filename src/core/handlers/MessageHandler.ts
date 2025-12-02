@@ -2,6 +2,7 @@ import type Pieces from "../../pieces/Pieces";
 import { buildHave } from "../../protocol/messages";
 import type Queue from "../../queue/Queue";
 import type { Torrent } from "../../types/index";
+import Logger, { LogCategory } from "../../utils/logger";
 import type { EndgameManager, ExtendedSocket } from "../modules/EndgameManager";
 import type { FileWriter } from "../modules/FileWriter";
 import type { UploadManager } from "../modules/UploadManager";
@@ -370,9 +371,9 @@ export class MessageHandler {
 
 		// Debug log (only if peers were notified)
 		if (sentCount > 0) {
-			console.log(
-				`📢 Broadcast HAVE piece ${pieceIndex} to ${sentCount} peers`,
-			);
+			Logger.debug(LogCategory.DOWNLOAD, `Broadcast HAVE piece ${pieceIndex}`, {
+				peers: sentCount,
+			});
 		}
 	}
 

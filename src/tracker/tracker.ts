@@ -7,6 +7,7 @@ import { infoHash, size } from "../protocol/parser";
 import type { Peer, Torrent } from "../types/index";
 import { genId } from "../utils/genId";
 import group from "../utils/group";
+import Logger, { LogCategory } from "../utils/logger";
 
 export function getPeers(
 	torrent: Torrent,
@@ -15,7 +16,9 @@ export function getPeers(
 		stats?: { seeds: number; leechers: number },
 	) => void,
 ) {
-	console.log("🔍 Searching for peers for:", torrent.info.name.toString());
+	Logger.debug(LogCategory.TRACKER, "Searching for peers", {
+		torrent: torrent.info.name.toString(),
+	});
 
 	const urls = new Set<string>();
 
@@ -48,7 +51,7 @@ export function getPeers(
 		urls.add(url);
 	});
 
-	console.log(`📡 Contacting ${urls.size} trackers...`);
+	Logger.debug(LogCategory.TRACKER, `Contacting ${urls.size} trackers`);
 
 	const seenPeers = new Set<string>();
 	const allPeers: Peer[] = [];
@@ -66,8 +69,10 @@ export function getPeers(
 	const progressiveTimeout = setTimeout(() => {
 		if (!callbackCalled && allPeers.length > 0) {
 			callbackCalled = true;
-			console.log(
-				`⚡ Quick start with ${allPeers.length} peers (${successfulTrackers}/${totalTrackers} trackers responded)`,
+			Logger.info(
+				LogCategory.TRACKER,
+				`Quick start with ${allPeers.length} peers`,
+				{ trackers: `${successfulTrackers}/${totalTrackers}` },
 			);
 			callback([...allPeers]);
 		}
@@ -78,13 +83,16 @@ export function getPeers(
 			callbackCalled = true;
 			clearTimeout(progressiveTimeout);
 			if (allPeers.length > 0) {
-				console.log(
-					`🚀 Starting with ${allPeers.length} peers from ${successfulTrackers}/${totalTrackers} trackers`,
+				Logger.info(
+					LogCategory.TRACKER,
+					`Starting with ${allPeers.length} peers`,
+					{ trackers: `${successfulTrackers}/${totalTrackers}` },
 				);
 				callback([...allPeers]);
 			} else {
-				console.error(
-					"❌ No trackers returned peers - trying with DHT fallback",
+				Logger.warn(
+					LogCategory.TRACKER,
+					"No trackers returned peers, trying DHT fallback",
 				);
 				// Try DHT as absolute fallback
 				tryDHTFallback(torrent, callback);
@@ -117,8 +125,10 @@ export function getPeers(
 			});
 
 			if (newPeers.length > 0) {
-				console.log(
-					`✅ ${newPeers.length} peers from ${urlStr.substring(0, 50)}...`,
+				Logger.debug(
+					LogCategory.TRACKER,
+					`${newPeers.length} peers from tracker`,
+					{ url: urlStr.substring(0, 50) },
 				);
 				allPeers.push(...newPeers);
 				successfulTrackers++;
@@ -128,8 +138,9 @@ export function getPeers(
 					callbackCalled = true;
 					clearTimeout(progressiveTimeout);
 					clearTimeout(finalTimeout);
-					console.log(
-						`🚀 Excellent peer count reached! Starting with ${allPeers.length} peers`,
+					Logger.info(
+						LogCategory.TRACKER,
+						`Excellent peer count reached! Starting with ${allPeers.length} peers`,
 					);
 					callback([...allPeers], stats);
 					return;
@@ -154,12 +165,13 @@ export function getPeers(
 				clearTimeout(finalTimeout);
 
 				if (allPeers.length > 0) {
-					console.log(
-						`🏁 All trackers done. Starting with ${allPeers.length} peers`,
+					Logger.info(
+						LogCategory.TRACKER,
+						`All trackers done, starting with ${allPeers.length} peers`,
 					);
 					callback([...allPeers], stats);
 				} else {
-					console.error("❌ No peers found from any tracker");
+					Logger.error(LogCategory.TRACKER, "No peers found from any tracker");
 					tryDHTFallback(torrent, callback);
 				}
 			}
@@ -182,7 +194,7 @@ async function tryDHTFallback(
 	callback: (peers: Peer[]) => void,
 ): Promise<void> {
 	// DHT temporarily disabled for Phase 1
-	console.log("❌ DHT fallback not available yet");
+	Logger.debug(LogCategory.DHT, "DHT fallback not available yet");
 	callback([]);
 }
 
@@ -198,7 +210,7 @@ function getPeersFromUrl(
 	try {
 		url = new URL(urlStr);
 	} catch (_e) {
-		console.error("Invalid tracker URL:", urlStr);
+		Logger.warn(LogCategory.TRACKER, "Invalid tracker URL", { url: urlStr });
 		return;
 	}
 
@@ -466,9 +478,11 @@ async function getPeersHttp(
 		if (decoded.complete !== undefined || decoded.incomplete !== undefined) {
 			const seeders = decoded.complete || 0;
 			const leechers = decoded.incomplete || 0;
-			console.log(
-				`📊 Tracker stats - Seeders: ${seeders}, Leechers: ${leechers}, Peers returned: ${peers.length}`,
-			);
+			Logger.debug(LogCategory.TRACKER, "Tracker stats", {
+				seeders,
+				leechers,
+				peers: peers.length,
+			});
 			stats = { seeds: seeders, leechers: leechers };
 		}
 

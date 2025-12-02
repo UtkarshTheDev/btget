@@ -5,7 +5,7 @@ import { downloadTorrent } from "./core/download";
 import { infoHash, open, size } from "./protocol/parser";
 import type { File } from "./types/index";
 import { startUI } from "./ui/render";
-import Logger from "./utils/logger";
+import Logger, { LogCategory, LogLevel } from "./utils/logger";
 
 const KB_CONVERSION = 1024;
 const BYTES_PER_MB = KB_CONVERSION * KB_CONVERSION;
@@ -47,9 +47,29 @@ if (isDirectDownload) {
 		})
 		.option("debug", {
 			alias: "d",
-			describe: "Debug mode - show console logs instead of TUI",
+			describe: "Debug mode - show console logs instead of TUI (INFO level)",
 			type: "boolean",
 			default: false,
+		})
+		.option("verbose", {
+			alias: "v",
+			describe: "Verbose debug output (DEBUG level)",
+			type: "boolean",
+			default: false,
+		})
+		.option("trace", {
+			describe: "Ultra-verbose debug output (TRACE level)",
+			type: "boolean",
+			default: false,
+		})
+		.option("log-category", {
+			describe:
+				"Filter logs by category (comma-separated: PEER,UPLOAD,DOWNLOAD,DHT,TRACKER,PIECE,QUEUE,PROTOCOL)",
+			type: "string",
+		})
+		.option("log-level", {
+			describe: "Minimum log level (TRACE, DEBUG, INFO, WARN, ERROR)",
+			type: "string",
 		})
 		.example("btget movie.torrent", "Download torrent to current directory")
 		.example(
@@ -72,11 +92,43 @@ if (isDirectDownload) {
 				const torrentFilePath = args._[0] as string;
 				const outputDirPath = path.resolve(args.output as string);
 				const dhtOnly = args.dhtOnly || args["dht-only"];
-				const debugMode = args.debug || args.d;
+				const verboseMode = args.verbose || args.v;
+				const traceMode = args.trace;
+				// --verbose and --trace should also enable debug mode (suppress TUI)
+				const debugMode = args.debug || args.d || verboseMode || traceMode;
+				const logCategory = args.logCategory || args["log-category"];
+				const logLevel = args.logLevel || args["log-level"];
 
-				// Enable Logger based on debug flag
-				if (debugMode) {
-					Logger.enable();
+				// Configure Logger based on flags
+				if (debugMode || verboseMode || traceMode) {
+					// Determine log level
+					let level = LogLevel.INFO;
+					if (traceMode) {
+						level = LogLevel.TRACE;
+					} else if (verboseMode) {
+						level = LogLevel.DEBUG;
+					} else if (logLevel) {
+						// Parse log level from string
+						const levelMap: Record<string, LogLevel> = {
+							TRACE: LogLevel.TRACE,
+							DEBUG: LogLevel.DEBUG,
+							INFO: LogLevel.INFO,
+							WARN: LogLevel.WARN,
+							ERROR: LogLevel.ERROR,
+						};
+						level = levelMap[logLevel.toUpperCase()] ?? LogLevel.INFO;
+					}
+
+					Logger.enable(level);
+
+					// Parse and set categories if specified
+					if (logCategory) {
+						const categories = logCategory
+							.split(",")
+							.map((c: string) => c.trim().toUpperCase())
+							.filter((c: string) => c in LogCategory) as LogCategory[];
+						Logger.setCategories(categories);
+					}
 				} else {
 					Logger.disable();
 				}
@@ -121,9 +173,7 @@ if (isDirectDownload) {
 					console.log = () => {};
 					console.error = () => {};
 				} else {
-					console.log(`🚀 Starting download in DEBUG mode: ${torrentName}`);
-					console.log(`📦 Size: ${formattedSize}`);
-					console.log(`🔑 Hash: ${hash}`);
+					// Debug mode enabled - Logger will handle all output
 				}
 
 				await downloadTorrent(torrent, outputDirPath, {
@@ -296,9 +346,7 @@ if (isDirectDownload) {
 						console.log = () => {};
 						console.error = () => {};
 					} else {
-						console.log(`🚀 Starting download in DEBUG mode: ${torrentName}`);
-						console.log(`📦 Size: ${formattedSize}`);
-						console.log(`🔑 Hash: ${hash}`);
+						// Debug mode enabled - Logger will handle all output
 					}
 
 					await downloadTorrent(torrent, outputDirPath, {

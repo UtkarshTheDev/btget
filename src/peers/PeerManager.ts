@@ -15,7 +15,7 @@ import {
 } from "../protocol/messages";
 import type Queue from "../queue/Queue";
 import type { Peer, Torrent } from "../types/index";
-import Logger from "../utils/logger";
+import Logger, { LogCategory } from "../utils/logger";
 
 // PHASE 4: Peer ban tracking
 interface BannedPeer {
@@ -139,7 +139,6 @@ export class PeerManager {
 					return; // Skip recently failed peer
 				}
 
-				this.knownPeers.add(peerId);
 				validPeers.push(peer);
 			}
 		});
@@ -266,7 +265,9 @@ export class PeerManager {
 						if (this.pieces.getVerifiedCount() > 0) {
 							const bitfield = this.pieces.getBitfield();
 							socket.write(buildBitfield(bitfield));
-							Logger.info(`Sent BITFIELD to ${peerId}`);
+							Logger.debug(LogCategory.PEER, `Sent BITFIELD to ${peerId}`, {
+								pieceCount: this.pieces.getVerifiedCount(),
+							});
 						}
 
 						// FIX #5: Quick unchoke after 2 seconds to allow uploads
@@ -601,7 +602,9 @@ export class PeerManager {
 			reason,
 			bannedUntil: Date.now() + this.BAN_DURATION_MS,
 		});
-		Logger.warn(`Banned peer ${ip}:${port} for ${reason} (1 hour)`);
+		Logger.warn(LogCategory.PEER, `Banned peer ${ip}:${port} for ${reason}`, {
+			duration: "1 hour",
+		});
 	}
 
 	/**

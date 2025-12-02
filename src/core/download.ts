@@ -6,6 +6,7 @@ import { infoHash, size } from "../protocol/parser";
 import Queue from "../queue/Queue";
 import { getPeers } from "../tracker/tracker";
 import type { Peer, Torrent } from "../types/index";
+import Logger, { LogCategory } from "../utils/logger";
 import { MessageHandler } from "./handlers/MessageHandler";
 import { EndgameManager } from "./modules/EndgameManager";
 import { FileWriter } from "./modules/FileWriter";
@@ -51,9 +52,10 @@ export async function downloadTorrent(
 	const MAX_TOTAL_TIME_MS = 86400000; // 24 hours
 
 	if (!options.onProgress) {
-		console.log(`🚀 Starting reliable download: ${torrentName}`);
-		console.log(`📦 Size: ${(Number(totalSize) / BYTES_PER_MB).toFixed(2)} MB`);
-		console.log(`🧩 Initialized ${totalPieces} pieces`);
+		Logger.info(LogCategory.DOWNLOAD, `Starting download: ${torrentName}`, {
+			size: `${(Number(totalSize) / BYTES_PER_MB).toFixed(2)} MB`,
+			pieces: totalPieces,
+		});
 	}
 
 	// Create output directory
@@ -146,8 +148,12 @@ export async function downloadTorrent(
 					const progress =
 						(messageHandler.getTotalDownloaded() / Number(totalSize)) *
 						PERCENTAGE_MULTIPLIER;
-					if (!options.onProgress)
-						console.log(`\n❌ Download stalled at ${progress.toFixed(1)}%`);
+					if (!options.onProgress) {
+						Logger.error(
+							LogCategory.DOWNLOAD,
+							`Download stalled at ${progress.toFixed(1)}%`,
+						);
+					}
 					fileWriter
 						.cleanup()
 						.then(() =>
@@ -211,13 +217,13 @@ export async function downloadTorrent(
 				uploadManager.stop();
 				dht.stop();
 
-				if (!options.onProgress)
-					console.log("\n✅ Download completed successfully!");
+				if (!options.onProgress) {
+					Logger.info(
+						LogCategory.DOWNLOAD,
+						`Download completed: ${torrentName}`,
+					);
+				}
 				fileWriter.cleanup().then(() => {
-					if (!options.onProgress)
-						console.log(
-							`✅ Download completed successfully for '${torrentName}'!`,
-						);
 					resolve();
 				});
 			}
@@ -225,8 +231,12 @@ export async function downloadTorrent(
 
 		// Start peer discovery
 		const discoverySource = options.dhtOnly ? "DHT Only" : "Trackers and DHT";
-		if (!options.onProgress)
-			console.log(`🔍 Searching for peers via ${discoverySource}...`);
+		if (!options.onProgress) {
+			Logger.info(
+				LogCategory.SYSTEM,
+				`Searching for peers via ${discoverySource}`,
+			);
+		}
 
 		// Start DHT lookup
 		dht.on("peers", (peers: Array<{ ip: string; port: number }>) => {
@@ -250,8 +260,12 @@ export async function downloadTorrent(
 					if (downloadComplete) return;
 
 					if (peers.length === 0) {
-						if (!options.onProgress)
-							console.log("⚠️ No peers found from trackers, relying on DHT...");
+						if (!options.onProgress) {
+							Logger.warn(
+								LogCategory.TRACKER,
+								"No peers found from trackers, relying on DHT",
+							);
+						}
 					} else {
 						// Add peers to manager
 						peerManager.addPeers(peers);

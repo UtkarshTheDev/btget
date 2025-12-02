@@ -1,6 +1,6 @@
 import type { RequestPayload } from "../../protocol/messages";
 import { buildChoke, buildPiece, buildUnchoke } from "../../protocol/messages";
-import Logger from "../../utils/logger";
+import Logger, { LogCategory, LogLevel } from "../../utils/logger";
 import type { ExtendedSocket } from "./EndgameManager";
 import type { FileWriter } from "./FileWriter";
 
@@ -127,9 +127,9 @@ export class UploadManager {
 				lastUploadTime: now,
 				isChoked: true, // Start choked, will be unchoked by choking round
 			});
-			console.log(
-				`✅ Early registered peer ${peerId}. Total peers: ${this.peerStats.size}`,
-			);
+			Logger.debug(LogCategory.UPLOAD, `Early registered peer ${peerId}`, {
+				totalPeers: this.peerStats.size,
+			});
 		}
 	}
 
@@ -139,15 +139,16 @@ export class UploadManager {
 	quickUnchokePeer(peerId: string): void {
 		const stats = this.peerStats.get(peerId);
 		if (stats) {
-			stats.isChoked = false;
-			console.log(`🔓 Quick unchoked peer ${peerId}`);
+			Logger.debug(LogCategory.UPLOAD, `Quick unchoke: ${peerId}`, {
+				reason: "bootstrap",
+			});
 
 			// Send unchoke message immediately
 			if (this.allSockets) {
 				const socket = this.allSockets.get(peerId);
 				if (socket && !socket.destroyed) {
 					socket.write(buildUnchoke());
-					console.log(`📤 Sent UNCHOKE to ${peerId}`);
+					Logger.trace(LogCategory.UPLOAD, `Sent UNCHOKE to ${peerId}`);
 				}
 			}
 		}
@@ -161,19 +162,23 @@ export class UploadManager {
 		socket: ExtendedSocket,
 		request: RequestPayload,
 	): Promise<void> {
-		console.log(
-			`📥 REQUEST from ${socket.peerId}: piece ${request.index}, begin ${request.begin}, length ${request.length}`,
-		);
+		Logger.trace(LogCategory.UPLOAD, `REQUEST from ${socket.peerId}`, {
+			piece: request.index,
+			begin: request.begin,
+			length: request.length,
+		});
 
 		if (!socket.peerId) {
-			console.log(`❌ No peerId on socket`);
+			Logger.warn(LogCategory.UPLOAD, "No peerId on socket");
 			return;
 		}
 
 		// FIX #10: Validate block size
 		if (request.length > this.MAX_BLOCK_SIZE || request.length <= 0) {
-			console.warn(
-				`❌ Invalid block size ${request.length} from ${socket.peerId} - disconnecting`,
+			Logger.warn(
+				LogCategory.UPLOAD,
+				`Invalid block size from ${socket.peerId}, disconnecting`,
+				{ size: request.length },
 			);
 			socket.destroy();
 			return;
@@ -181,8 +186,9 @@ export class UploadManager {
 
 		// FIX #10: Rate limiting
 		if (!this.checkRateLimit(socket.peerId)) {
-			console.warn(
-				`❌ Rate limit exceeded for ${socket.peerId} - disconnecting`,
+			Logger.warn(
+				LogCategory.UPLOAD,
+				`Rate limit exceeded for ${socket.peerId}, disconnecting`,
 			);
 			socket.destroy();
 			return;
@@ -191,27 +197,42 @@ export class UploadManager {
 		// FIX #4: Register peer early if not already registered
 		let stats = this.peerStats.get(socket.peerId);
 		if (!stats) {
-			console.log(`⚠️  Peer ${socket.peerId} not registered, registering early`);
+			Logger.debug(
+				LogCategory.UPLOAD,
+				`Peer ${socket.peerId} not registered, registering early`,
+			);
 			this.registerPeerEarly(socket.peerId);
 			stats = this.peerStats.get(socket.peerId);
 		}
 
 		if (!stats) {
-			console.log(`❌ Failed to register peer ${socket.peerId}`);
+			Logger.error(
+				LogCategory.UPLOAD,
+				`Failed to register peer ${socket.peerId}`,
+			);
 			return;
 		}
 
 		// Only serve pieces to unchoked peers
 		if (stats.isChoked) {
-			console.log(`❌ Peer ${socket.peerId} is CHOKED - rejecting request`);
+			Logger.trace(
+				LogCategory.UPLOAD,
+				`Peer ${socket.peerId} is CHOKED, rejecting request`,
+			);
 			return;
 		}
 
-		console.log(`✅ Peer ${socket.peerId} is UNCHOKED - serving request`);
+		Logger.trace(
+			LogCategory.UPLOAD,
+			`Peer ${socket.peerId} is UNCHOKED, serving request`,
+		);
 
 		// FIX #9: Check per-peer rate limit before sending
 		if (!this.canUploadToPeer(socket.peerId)) {
-			console.log(`⚠️  Peer ${socket.peerId} hit rate limit - queueing request`);
+			Logger.trace(
+				LogCategory.UPLOAD,
+				`Peer ${socket.peerId} hit rate limit, queueing request`,
+			);
 			// FIX #10: Queue this request for later
 			if (this.requestQueue.length < this.MAX_QUEUE_SIZE) {
 				this.requestQueue.push({ socket, request });
@@ -230,7 +251,10 @@ export class UploadManager {
 				request.length,
 			);
 
-			console.log(`✅ Read block successfully, sending ${block.length} bytes`);
+			Logger.trace(
+				LogCategory.UPLOAD,
+				`Read block successfully, sending ${block.length} bytes`,
+			);
 
 			// Send PIECE message
 			const pieceMessage = buildPiece({
@@ -249,9 +273,7 @@ export class UploadManager {
 			// FIX #9: Record upload for rate limiting
 			this.recordUploadToPeer(socket.peerId, block.length);
 
-			console.log(
-				`📤 UPLOADED ${block.length} bytes. Total: ${this.totalUploaded}`,
-			);
+			Logger.aggregate("bytes_uploaded", block.length);
 
 			const now = Date.now();
 			const timeDelta = (now - stats.lastUploadTime) / this.MS_PER_SEC;
@@ -262,7 +284,10 @@ export class UploadManager {
 				stats.lastUploadTime = now;
 			}
 		} catch (error) {
-			console.error(`❌ Upload error for ${socket.peerId}: ${error}`);
+			Logger.error(
+				LogCategory.UPLOAD,
+				`Upload error for ${socket.peerId}: ${error}`,
+			);
 		}
 	}
 
@@ -478,9 +503,6 @@ export class UploadManager {
 	 * FIX #14: Only send when state changes
 	 */
 	sendChokeMessages(allSockets: Map<string, ExtendedSocket>): void {
-		Logger.debug(
-			`Sending choke/unchoke messages to ${this.peerStats.size} peers`,
-		);
 		let chokedCount = 0;
 		let unchokedCount = 0;
 		let skippedCount = 0;
@@ -488,7 +510,10 @@ export class UploadManager {
 		for (const [peerId, stats] of this.peerStats.entries()) {
 			const socket = allSockets.get(peerId);
 			if (!socket || socket.destroyed) {
-				Logger.debug(`Peer ${peerId} has no socket or destroyed`);
+				Logger.trace(
+					LogCategory.UPLOAD,
+					`Peer ${peerId} has no socket or destroyed`,
+				);
 				continue;
 			}
 
@@ -502,22 +527,31 @@ export class UploadManager {
 				if (stats.isChoked) {
 					socket.write(buildChoke());
 					chokedCount++;
-					Logger.debug(`Sent CHOKE to ${peerId}`);
+					Logger.trace(LogCategory.UPLOAD, `Sent CHOKE to ${peerId}`);
 				} else {
 					socket.write(buildUnchoke());
 					unchokedCount++;
-					Logger.debug(`Sent UNCHOKE to ${peerId}`);
+					Logger.trace(LogCategory.UPLOAD, `Sent UNCHOKE to ${peerId}`);
 				}
 				// FIX #14: Update last sent state
 				stats.lastSentChokeState = stats.isChoked;
 			} catch (error) {
-				console.error(`❌ Error sending message to ${peerId}: ${error}`);
+				Logger.error(
+					LogCategory.UPLOAD,
+					`Error sending message to ${peerId}: ${error}`,
+				);
 			}
 		}
 
-		Logger.debug(
-			`Summary: ${unchokedCount} unchoked, ${chokedCount} choked, ${skippedCount} skipped (no change)`,
-		);
+		// Aggregate summary instead of individual logs
+		if (unchokedCount > 0 || chokedCount > 0) {
+			Logger.debug(LogCategory.UPLOAD, "Choking round summary", {
+				unchoked: unchokedCount,
+				choked: chokedCount,
+				skipped: skippedCount,
+				totalPeers: this.peerStats.size,
+			});
+		}
 	}
 
 	/**
@@ -555,9 +589,9 @@ export class UploadManager {
 				isChoked: true,
 			});
 
-			console.error(
-				`✅ Registered peer ${peerId}. Total peers: ${this.peerStats.size}`,
-			);
+			Logger.debug(LogCategory.UPLOAD, `Registered peer ${peerId}`, {
+				totalPeers: this.peerStats.size,
+			});
 
 			// CRITICAL FIX: Trigger immediate choking round when peer registers
 			// This ensures new peers get evaluated and unchoked right away
@@ -567,8 +601,9 @@ export class UploadManager {
 			// CRITICAL FIX: Send choke/unchoke messages immediately
 			// This ensures peers receive UNCHOKE before they timeout
 			if (this.allSockets) {
-				console.error(
-					`🔄 Sending immediate choke/unchoke messages for new peer`,
+				Logger.debug(
+					LogCategory.UPLOAD,
+					"Sending immediate choke/unchoke messages for new peer",
 				);
 				this.sendChokeMessages(this.allSockets);
 			}
