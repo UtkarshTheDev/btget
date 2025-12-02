@@ -124,6 +124,19 @@ btget ubuntu.torrent -o ~/Downloads
 btget ubuntu.torrent --dht-only
 ```
 
+### Debugging and Logging
+
+For debugging, use `--debug`, `--verbose`, or `--trace` flags:
+
+```bash
+btget file.torrent -o output --debug                    # Basic debugging
+btget file.torrent -o output --verbose                  # Detailed logs
+btget file.torrent -o output --trace --log-category=UPLOAD  # Filter by category
+```
+
+📚 **See [docs/LOGGING.md](docs/LOGGING.md) for complete logging documentation.**
+
+
 ### Info Command
 
 To inspect the contents and metadata of a `.torrent` file without downloading:
@@ -147,75 +160,18 @@ btget info movie.torrent
 #    Main Tracker: http://tracker.example.com/announce
 ```
 
-## ⚡ Performance and Build
 
-This project uses **Bun Build** to create a single, optimized executable. This approach provides several advantages:
-
-- **Fast Startup**: By bundling all dependencies and leveraging Bun's native runtime, the CLI starts quickly.
-- **Small Footprint**: Aggressive tree-shaking and minification result in a small bundle size.
-- **Zero Runtime Dependencies**: The final build is a self-contained executable, making distribution simple.
-
-The build process is configured to be fast and efficient, enabling a smooth development experience.
 
 ## 🛠️ Development
 
-### Setup
-
-After cloning the repository, install the dependencies using Bun:
+For development setup, available scripts, and contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
-# Clone the repository
 git clone https://github.com/UtkarshTheDev/btget.git
 cd btget
-
-# Install dependencies
 bun install
+bun run build
 ```
-
-### Available Scripts
-
-```bash
-bun run build          # Build for production
-bun run dev           # Development with hot reload
-bun run test          # Run the test suite
-bun run btget         # Build and run btget command
-bun run download      # Build and run download command
-bun run info          # Build and run info command
-bun run lint          # Lint and check formatting
-bun run format        # Format code
-bun run typecheck     # Type checking only
-bun run clean         # Remove build files
-bun run rebuild       # Clean and rebuild
-```
-
-### Project Structure
-
-```
-src/
-├── index.ts              # Main CLI entry point
-├── core/                 # Core logic modules
-│   ├── download.ts       # Download orchestrator
-│   ├── handlers/         # Protocol handlers
-│   └── modules/          # Feature modules (FileWriter, Progress, etc.)
-├── dht/                  # Distributed Hash Table (DHT)
-├── peers/                # Peer connection management
-├── pieces/               # Piece handling and verification
-├── protocol/             # BitTorrent protocol parsing
-├── queue/                # Piece request queuing
-├── tracker/              # Tracker communication
-├── types/                # TypeScript type definitions
-└── utils/                # General utilities
-```
-
-## 🧪 Testing
-
-To run the test suite, use the following command:
-
-```bash
-bun test
-```
-
-This will execute all unit and integration tests located in the `test/` directory.
 
 ## 📋 Roadmap
 

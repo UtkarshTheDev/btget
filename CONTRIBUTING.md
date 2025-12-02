@@ -193,6 +193,121 @@ bun run clean           # Remove build files
    ./dist/index.js download test.torrent --dht-only
    ```
 
+### Logging and Debugging
+
+btget has a comprehensive hierarchical logging system for debugging. Use these flags to control log output:
+
+#### Log Levels
+
+- **`--debug`** - INFO level logs (default debug mode)
+- **`--verbose` / `-v`** - DEBUG level logs (detailed)
+- **`--trace`** - TRACE level logs (ultra-verbose, every operation)
+
+#### Log Categories
+
+Filter logs by subsystem using `--log-category`:
+
+- **`PEER`** - Peer connection lifecycle
+- **`UPLOAD`** - Upload manager decisions and piece serving
+- **`DOWNLOAD`** - Download progress and piece reception
+- **`DHT`** - DHT operations
+- **`TRACKER`** - Tracker communication
+- **`PIECE`** - Piece verification
+- **`QUEUE`** - Request queue operations
+- **`PROTOCOL`** - Protocol messages
+- **`SYSTEM`** - System-level events
+
+#### Testing Commands
+
+```bash
+# Basic debugging (INFO level, all categories)
+btget test.torrent -o /tmp --debug
+
+# Verbose debugging (DEBUG level, all categories)
+btget test.torrent -o /tmp --verbose
+
+# Ultra-verbose (TRACE level, all categories)
+btget test.torrent -o /tmp --trace
+
+# Filter by single category
+btget test.torrent -o /tmp --debug --log-category=UPLOAD
+btget test.torrent -o /tmp --trace --log-category=PEER
+
+# Filter by multiple categories
+btget test.torrent -o /tmp --verbose --log-category=TRACKER,DOWNLOAD
+
+# Set minimum log level
+btget test.torrent -o /tmp --debug --log-level=WARN  # Only warnings and errors
+
+# Combine filters for targeted debugging
+btget test.torrent -o /tmp --trace --log-category=UPLOAD,PEER --log-level=DEBUG
+```
+
+#### Common Debugging Scenarios
+
+```bash
+# Debug tracker issues
+btget test.torrent -o /tmp --verbose --log-category=TRACKER
+
+# Debug peer connection problems
+btget test.torrent -o /tmp --trace --log-category=PEER
+
+# Debug upload/seeding issues
+btget test.torrent -o /tmp --trace --log-category=UPLOAD
+
+# Debug download stalls
+btget test.torrent -o /tmp --verbose --log-category=DOWNLOAD,QUEUE
+
+# See everything (warning: very verbose!)
+btget test.torrent -o /tmp --trace
+```
+
+#### Adding Logs to Your Code
+
+When contributing, use the Logger utility with appropriate categories and levels:
+
+```typescript
+import Logger, { LogCategory, LogLevel } from './utils/logger';
+
+// INFO level - major milestones
+Logger.info(LogCategory.DOWNLOAD, 'Download started', { 
+  size: '100 MB', 
+  pieces: 400 
+});
+
+// DEBUG level - detailed operations
+Logger.debug(LogCategory.PEER, 'Connected to peer', { 
+  ip: '1.2.3.4', 
+  port: 6881 
+});
+
+// TRACE level - individual operations
+Logger.trace(LogCategory.UPLOAD, 'Serving block', { 
+  piece: 0, 
+  begin: 0, 
+  length: 16384 
+});
+
+// WARN level - recoverable issues
+Logger.warn(LogCategory.TRACKER, 'Tracker timeout', { 
+  url: 'http://tracker.example.com' 
+});
+
+// ERROR level - serious problems
+Logger.error(LogCategory.PIECE, 'Hash verification failed', { 
+  piece: 42 
+});
+
+// Rate-limited logging (prevents spam)
+Logger.throttle('peer-connection', 5000, () => {
+  Logger.debug(LogCategory.PEER, 'Peer connection attempt');
+});
+
+// Aggregate statistics (logged every 30s)
+Logger.aggregate('bytes_uploaded', blockSize);
+```
+
+
 ## 🔄 Pull Request Process
 
 ### Before Submitting
