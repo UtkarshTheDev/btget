@@ -1,5 +1,6 @@
 import type { RequestPayload } from "../../protocol/messages";
 import { buildChoke, buildPiece, buildUnchoke } from "../../protocol/messages";
+import Logger from "../../utils/logger";
 import type { ExtendedSocket } from "./EndgameManager";
 import type { FileWriter } from "./FileWriter";
 
@@ -48,6 +49,21 @@ export class UploadManager {
 		string,
 		{ count: number; windowStart: number }
 	>();
+
+	// FIX #9: Per-peer upload rate limiting
+	private readonly RATE_LIMIT_BYTES_PER_SEC = 256 * 1024; // 256 KB/s per peer
+	private readonly RATE_LIMIT_WINDOW_MS = 1000; // 1 second window
+	private peerUploadRates = new Map<
+		string,
+		{ bytesThisWindow: number; windowStart: number }
+	>();
+
+	// FIX #10: Request queueing instead of dropping
+	private readonly MAX_QUEUE_SIZE = 1000;
+	private requestQueue: Array<{
+		socket: ExtendedSocket;
+		request: RequestPayload;
+	}> = [];
 
 	constructor(private fileWriter: FileWriter) {
 		this.startChokingAlgorithm();
@@ -193,6 +209,16 @@ export class UploadManager {
 
 		console.log(`✅ Peer ${socket.peerId} is UNCHOKED - serving request`);
 
+		// FIX #9: Check per-peer rate limit before sending
+		if (!this.canUploadToPeer(socket.peerId)) {
+			console.log(`⚠️  Peer ${socket.peerId} hit rate limit - queueing request`);
+			// FIX #10: Queue this request for later
+			if (this.requestQueue.length < this.MAX_QUEUE_SIZE) {
+				this.requestQueue.push({ socket, request });
+			}
+			return;
+		}
+
 		try {
 			// FIX #10: Validate bounds before reading
 			// This is handled by fileWriter.readPieceBlock which will throw if invalid
@@ -220,6 +246,9 @@ export class UploadManager {
 			this.totalUploaded += block.length;
 			stats.bytesUploadedToPeer += block.length;
 
+			// FIX #9: Record upload for rate limiting
+			this.recordUploadToPeer(socket.peerId, block.length);
+
 			console.log(
 				`📤 UPLOADED ${block.length} bytes. Total: ${this.totalUploaded}`,
 			);
@@ -234,6 +263,74 @@ export class UploadManager {
 			}
 		} catch (error) {
 			console.error(`❌ Upload error for ${socket.peerId}: ${error}`);
+		}
+	}
+
+	/**
+	 * FIX #9: Check if peer can receive more data this second
+	 * @param peerId - Peer identifier
+	 * @returns true if within rate limit, false if exceeded
+	 */
+	private canUploadToPeer(peerId: string): boolean {
+		const now = Date.now();
+		const rate = this.peerUploadRates.get(peerId) ?? {
+			bytesThisWindow: 0,
+			windowStart: now,
+		};
+
+		// Window expired - reset
+		if (now - rate.windowStart >= this.RATE_LIMIT_WINDOW_MS) {
+			rate.bytesThisWindow = 0;
+			rate.windowStart = now;
+		}
+
+		this.peerUploadRates.set(peerId, rate);
+		return rate.bytesThisWindow < this.RATE_LIMIT_BYTES_PER_SEC;
+	}
+
+	/**
+	 * FIX #9: Track bytes uploaded to peer
+	 * @param peerId - Peer identifier
+	 * @param bytes - Number of bytes uploaded
+	 */
+	private recordUploadToPeer(peerId: string, bytes: number): void {
+		const rate = this.peerUploadRates.get(peerId);
+		if (rate) {
+			rate.bytesThisWindow += bytes;
+		}
+	}
+
+	/**
+	 * FIX #10: Process queued requests that couldn't be sent due to rate limiting
+	 */
+	private processQueuedRequests(): void {
+		while (this.requestQueue.length > 0) {
+			const item = this.requestQueue[0];
+			if (!item) break;
+
+			const { socket, request } = item;
+
+			// Check if socket still valid
+			if (!socket || socket.destroyed || !socket.peerId) {
+				this.requestQueue.shift(); // Remove invalid request
+				continue;
+			}
+
+			// Check if peer is still unchoked
+			const stats = this.peerStats.get(socket.peerId);
+			if (!stats || stats.isChoked) {
+				this.requestQueue.shift(); // Peer choked, drop request
+				continue;
+			}
+
+			// Check rate limit
+			if (!this.canUploadToPeer(socket.peerId)) {
+				break; // Still rate limited, try again later
+			}
+
+			// Process this request
+			this.requestQueue.shift();
+			this.handlePeerRequest(socket, request);
 		}
 	}
 
@@ -269,6 +366,8 @@ export class UploadManager {
 			if (this.allSockets) {
 				this.sendChokeMessages(this.allSockets);
 			}
+			// FIX #10: Process queued requests after choking round
+			this.processQueuedRequests();
 		}, this.CHOKING_ROUND_INTERVAL);
 
 		// Optimistic unchoking every 30 seconds
@@ -379,8 +478,8 @@ export class UploadManager {
 	 * FIX #14: Only send when state changes
 	 */
 	sendChokeMessages(allSockets: Map<string, ExtendedSocket>): void {
-		console.log(
-			`\n🔄 Sending choke/unchoke messages to ${this.peerStats.size} peers`,
+		Logger.debug(
+			`Sending choke/unchoke messages to ${this.peerStats.size} peers`,
 		);
 		let chokedCount = 0;
 		let unchokedCount = 0;
@@ -389,7 +488,7 @@ export class UploadManager {
 		for (const [peerId, stats] of this.peerStats.entries()) {
 			const socket = allSockets.get(peerId);
 			if (!socket || socket.destroyed) {
-				console.log(`⚠️  Peer ${peerId} has no socket or destroyed`);
+				Logger.debug(`Peer ${peerId} has no socket or destroyed`);
 				continue;
 			}
 
@@ -403,11 +502,11 @@ export class UploadManager {
 				if (stats.isChoked) {
 					socket.write(buildChoke());
 					chokedCount++;
-					console.log(`📤 Sent CHOKE to ${peerId}`);
+					Logger.debug(`Sent CHOKE to ${peerId}`);
 				} else {
 					socket.write(buildUnchoke());
 					unchokedCount++;
-					console.log(`📤 Sent UNCHOKE to ${peerId}`);
+					Logger.debug(`Sent UNCHOKE to ${peerId}`);
 				}
 				// FIX #14: Update last sent state
 				stats.lastSentChokeState = stats.isChoked;
@@ -416,8 +515,8 @@ export class UploadManager {
 			}
 		}
 
-		console.log(
-			`Summary: ${unchokedCount} unchoked, ${chokedCount} choked, ${skippedCount} skipped (no change)\n`,
+		Logger.debug(
+			`Summary: ${unchokedCount} unchoked, ${chokedCount} choked, ${skippedCount} skipped (no change)`,
 		);
 	}
 

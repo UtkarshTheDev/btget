@@ -63,13 +63,28 @@ export const Hero = ({
 			<Box justifyContent="center" marginY={1}>
 				<Text color="cyan">
 					{"█".repeat(
-						Math.floor((progress / PERCENTAGE_DIVISOR) * PROGRESS_BAR_WIDTH),
+						Math.max(
+							0,
+							Math.min(
+								PROGRESS_BAR_WIDTH,
+								Math.floor(
+									(Math.min(100, progress || 0) / PERCENTAGE_DIVISOR) *
+										PROGRESS_BAR_WIDTH,
+								),
+							),
+						),
 					)}
 				</Text>
 				<Text dimColor>
 					{"░".repeat(
-						PROGRESS_BAR_WIDTH -
-							Math.floor((progress / PERCENTAGE_DIVISOR) * PROGRESS_BAR_WIDTH),
+						Math.max(
+							0,
+							PROGRESS_BAR_WIDTH -
+								Math.floor(
+									(Math.min(100, progress || 0) / PERCENTAGE_DIVISOR) *
+										PROGRESS_BAR_WIDTH,
+								),
+						),
 					)}
 				</Text>
 			</Box>

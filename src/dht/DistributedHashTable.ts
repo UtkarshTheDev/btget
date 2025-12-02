@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import dgram from "node:dgram";
 import { EventEmitter } from "node:events";
 import bencode from "bencode";
+import Logger from "../utils/logger";
 import { RoutingTable } from "./RoutingTable";
 
 interface DHTOptions {
@@ -62,8 +63,8 @@ export class DistributedHashTable extends EventEmitter {
 		while (this.bootstrapAttempts < this.MAX_BOOTSTRAP_ATTEMPTS) {
 			try {
 				const attempt = this.bootstrapAttempts + 1;
-				console.log(
-					`🌐 DHT Bootstrap attempt ${attempt}/${this.MAX_BOOTSTRAP_ATTEMPTS}`,
+				Logger.debug(
+					`DHT Bootstrap attempt ${attempt}/${this.MAX_BOOTSTRAP_ATTEMPTS}`,
 				);
 
 				// Perform bootstrap with timeout
@@ -77,7 +78,7 @@ export class DistributedHashTable extends EventEmitter {
 					),
 				]);
 
-				console.log(`✅ DHT Bootstrap successful (attempt ${attempt})`);
+				Logger.debug(`DHT Bootstrap successful (attempt ${attempt})`);
 				this.emit("bootstrap-success");
 				this.bootstrapInProgress = false;
 				return;
@@ -87,8 +88,8 @@ export class DistributedHashTable extends EventEmitter {
 				if (this.bootstrapAttempts < this.MAX_BOOTSTRAP_ATTEMPTS) {
 					// Exponential backoff: 1s, 2s, 4s
 					const backoffMs = 1000 * 2 ** (this.bootstrapAttempts - 1);
-					console.warn(
-						`⚠️  Bootstrap attempt ${this.bootstrapAttempts} failed, ` +
+					Logger.debug(
+						`Bootstrap attempt ${this.bootstrapAttempts} failed, ` +
 							`retrying in ${backoffMs}ms...`,
 					);
 
@@ -98,9 +99,7 @@ export class DistributedHashTable extends EventEmitter {
 		}
 
 		// All attempts failed
-		console.warn(
-			"❌ DHT Bootstrap failed after 3 attempts, relying on trackers",
-		);
+		Logger.debug("DHT Bootstrap failed after 3 attempts, relying on trackers");
 		this.emit("bootstrap-failed");
 		this.bootstrapInProgress = false;
 	}

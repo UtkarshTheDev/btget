@@ -160,6 +160,7 @@ export async function downloadTorrent(
 
 		// Progress monitoring
 		const progressInterval = setInterval(() => {
+			// FIX #12: Early return if download already complete
 			if (downloadComplete) {
 				clearInterval(progressInterval);
 				return;
@@ -170,7 +171,11 @@ export async function downloadTorrent(
 
 			// Use verified pieces for accurate progress (prevents exceeding 100%)
 			const verifiedPieces = pieces.getVerifiedCount();
-			const progress = (verifiedPieces / totalPieces) * PERCENTAGE_MULTIPLIER;
+			// FIX #12: Cap progress at 100% to prevent display issues
+			const progress = Math.min(
+				100,
+				(verifiedPieces / totalPieces) * PERCENTAGE_MULTIPLIER,
+			);
 
 			// Update progress
 			progressTracker.update(downloaded, connectedPeers, {
