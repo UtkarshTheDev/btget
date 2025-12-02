@@ -1,6 +1,6 @@
-# 🚀 btget - BitTorrent Get CLI
-
 <div align="center">
+
+# 🚀 btget - BitTorrent Get CLI
 
 ![BitTorrent CLI](https://img.shields.io/badge/BitTorrent-CLI-blue?style=for-the-badge&logo=bittorrent)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
@@ -11,23 +11,11 @@
 
 [Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Development](#-development) • [Contributing](#-contributing)
 
-<!-- Package & Release Badges -->
+[![CI](https://img.shields.io/github/actions/workflow/status/UtkarshTheDev/btget/ci.yml?branch=main&style=flat-square&logo=github-actions&label=CI)](https://github.com/UtkarshTheDev/btget/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/btget.svg?style=flat-square&logo=npm)](https://www.npmjs.com/package/btget)
 [![npm downloads](https://img.shields.io/npm/dm/btget.svg?style=flat-square)](https://npmjs.org/package/btget)
 [![GitHub release](https://img.shields.io/github/v/release/UtkarshTheDev/btget?style=flat-square&logo=github)](https://github.com/UtkarshTheDev/btget/releases)
-[![GitHub Release Date](https://img.shields.io/github/release-date/UtkarshTheDev/btget?style=flat-square)](https://github.com/UtkarshTheDev/btget/releases)
-
-<!-- Build & Quality Badges -->
-[![CI](https://img.shields.io/github/actions/workflow/status/UtkarshTheDev/btget/ci.yml?branch=main&style=flat-square&logo=github-actions&label=CI)](https://github.com/UtkarshTheDev/btget/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/UtkarshTheDev/btget/release.yml?style=flat-square&logo=github-actions&label=Release)](https://github.com/UtkarshTheDev/btget/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/node/v/btget?style=flat-square&logo=node.js)](https://nodejs.org)
-
-<!-- Repository Stats -->
-[![GitHub stars](https://img.shields.io/github/stars/UtkarshTheDev/btget?style=flat-square&logo=github)](https://github.com/UtkarshTheDev/btget/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/UtkarshTheDev/btget?style=flat-square&logo=github)](https://github.com/UtkarshTheDev/btget/issues)
-[![GitHub pull requests](https://img.shields.io/github/issues-pr/UtkarshTheDev/btget?style=flat-square&logo=github)](https://github.com/UtkarshTheDev/btget/pulls)
-[![Package Size](https://img.shields.io/bundlephobia/min/btget?style=flat-square)](https://bundlephobia.com/package/btget)
 
 </div>
 
