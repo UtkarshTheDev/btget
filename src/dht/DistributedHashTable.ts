@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import dgram from "node:dgram";
 import { EventEmitter } from "node:events";
 import bencode from "bencode";
-import Logger from "../utils/logger";
+import Logger, { LogCategory } from "../utils/logger";
 import { RoutingTable } from "./RoutingTable";
 
 interface DHTOptions {
@@ -64,6 +64,7 @@ export class DistributedHashTable extends EventEmitter {
 			try {
 				const attempt = this.bootstrapAttempts + 1;
 				Logger.debug(
+					LogCategory.DHT,
 					`DHT Bootstrap attempt ${attempt}/${this.MAX_BOOTSTRAP_ATTEMPTS}`,
 				);
 
@@ -78,7 +79,10 @@ export class DistributedHashTable extends EventEmitter {
 					),
 				]);
 
-				Logger.debug(`DHT Bootstrap successful (attempt ${attempt})`);
+				Logger.debug(
+					LogCategory.DHT,
+					`DHT Bootstrap successful (attempt ${attempt})`,
+				);
 				this.emit("bootstrap-success");
 				this.bootstrapInProgress = false;
 				return;
@@ -89,6 +93,7 @@ export class DistributedHashTable extends EventEmitter {
 					// Exponential backoff: 1s, 2s, 4s
 					const backoffMs = 1000 * 2 ** (this.bootstrapAttempts - 1);
 					Logger.debug(
+						LogCategory.DHT,
 						`Bootstrap attempt ${this.bootstrapAttempts} failed, ` +
 							`retrying in ${backoffMs}ms...`,
 					);
@@ -99,7 +104,10 @@ export class DistributedHashTable extends EventEmitter {
 		}
 
 		// All attempts failed
-		Logger.debug("DHT Bootstrap failed after 3 attempts, relying on trackers");
+		Logger.debug(
+			LogCategory.DHT,
+			"DHT Bootstrap failed after 3 attempts, relying on trackers",
+		);
 		this.emit("bootstrap-failed");
 		this.bootstrapInProgress = false;
 	}
@@ -164,32 +172,6 @@ export class DistributedHashTable extends EventEmitter {
 			this.socket.on("message", responseHandler);
 			this.send(msg, host, port);
 		});
-	}
-
-	/**
-	 * Bootstrap DHT by connecting to public nodes (legacy method)
-	 */
-	private bootstrap(): void {
-		this.BOOTSTRAP_NODES.forEach((node) => {
-			this.findNode(node.host, node.port, this.localId);
-		});
-	}
-
-	/**
-	 * Send find_node query
-	 */
-	private findNode(host: string, port: number, target: Buffer): void {
-		const tid = crypto.randomBytes(this.TRANSACTION_ID_LENGTH);
-		const msg = {
-			t: tid,
-			y: "q",
-			q: "find_node",
-			a: {
-				id: this.localId,
-				target: target,
-			},
-		};
-		this.send(msg, host, port);
 	}
 
 	/**

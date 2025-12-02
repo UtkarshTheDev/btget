@@ -3,375 +3,123 @@
  * Tracks detailed statistics for monitoring and debugging
  */
 
-export type Metrics = {};
-\ttotalDownloaded: number
-\ttotalUploaded: number
-\tcurrentDownloadSpeed: number
-\tcurrentUploadSpeed: number
-\tavgDownloadSpeed: number
-\tavgUploadSpeed: number
-\tactivePeers: number
-\ttotalPeersConnected: number
-\tblocksReceived: number
-\tblocksRequested: number
-\tprotocolErrors: number
-\tuptime: number // milliseconds
-}
+export type Metrics = {
+	totalDownloaded: number;
+	totalUploaded: number;
+	currentDownloadSpeed: number;
+	currentUploadSpeed: number;
+	avgDownloadSpeed: number;
+	avgUploadSpeed: number;
+	activePeers: number;
+	totalPeersConnected: number;
+	blocksReceived: number;
+	blocksRequested: number;
+	protocolErrors: number;
+	uptime: number; // milliseconds
+};
 
 export class MetricsTracker {
-	\
-	tprivate;
-	startTime: number;
-	\
-	tprivate;
-	blocksReceived = 0;
-	\
-	tprivate;
-	blocksRequested = 0;
-	\
-	tprivate;
-	protocolErrors = 0;
-	\
-	tprivate;
-	downloadSpeedHistory: number[] = [];
-	\
-	tprivate;
-	uploadSpeedHistory: number[] = [];
-	\
-	tprivate;
-	readonly MAX_HISTORY_SIZE = 60; // Keep last 60 samples
+	private startTime: number;
+	private blocksReceived = 0;
+	private blocksRequested = 0;
+	private protocolErrors = 0;
+	private downloadSpeedHistory: number[] = [];
+	private uploadSpeedHistory: number[] = [];
+	private readonly MAX_HISTORY_SIZE = 60; // Keep last 60 samples
 
-	\
-	tconstructor() {
-		\t\tthis.startTime = Date.now()
-		\t
+	constructor() {
+		this.startTime = Date.now();
 	}
 
-	\
-	t; /**
-\t * Record a block received
-\t */
-	\
-	trecordBlockReceived(): void {
-		\t\tthis.blocksReceived++
-		\t
+	/**
+	 * Record a block received
+	 */
+	recordBlockReceived(): void {
+		this.blocksReceived++;
 	}
 
-	\
-	t; /**
-\t * Record a block requested
-\t */
-	\
-	trecordBlockRequested(): void {
-		\t\tthis.blocksRequested++
-		\t
+	/**
+	 * Record a block requested
+	 */
+	recordBlockRequested(): void {
+		this.blocksRequested++;
 	}
 
-	\
-	t; /**
-\t * Record a protocol error
-\t */
-	\
-	trecordProtocolError(): void {
-		\t\tthis.protocolErrors++
-		\t
+	/**
+	 * Record a protocol error
+	 */
+	recordProtocolError(): void {
+		this.protocolErrors++;
 	}
 
-	\
-	t; /**
-\t * Record current download speed
-\t */
-	\
-	trecordDownloadSpeed(speed: number): void {
-		\t\tthis.downloadSpeedHistory.push(speed)
-		\t\tif (this.downloadSpeedHistory.length > this.MAX_HISTORY_SIZE)
-		\t\t\tthis.downloadSpeedHistory.shift()
-		\t\t
-		\t
+	/**
+	 * Record current download speed
+	 */
+	recordDownloadSpeed(speed: number): void {
+		this.downloadSpeedHistory.push(speed);
+		if (this.downloadSpeedHistory.length > this.MAX_HISTORY_SIZE) {
+			this.downloadSpeedHistory.shift();
+		}
 	}
 
-	\
-	t; /**
-\t * Record current upload speed
-\t */
-	\
-	trecordUploadSpeed(speed: number): void {
-		\t\tthis.uploadSpeedHistory.push(speed)
-		\t\tif (this.uploadSpeedHistory.length > this.MAX_HISTORY_SIZE)
-		\t\t\tthis.uploadSpeedHistory.shift()
-		\t\t
-		\t
+	/**
+	 * Record current upload speed
+	 */
+	recordUploadSpeed(speed: number): void {
+		this.uploadSpeedHistory.push(speed);
+		if (this.uploadSpeedHistory.length > this.MAX_HISTORY_SIZE) {
+			this.uploadSpeedHistory.shift();
+		}
 	}
 
-	\
-	t; /**
-\t * Get comprehensive metrics
-\t */
-	\
-	tgetMetrics(
-	\
-	t;
-	\
-	ttotalDownloaded: number;
-	,
-\
-	t;
-	\
-	ttotalUploaded: number;
-	,
-\
-	t;
-	\
-	tcurrentDownloadSpeed: number;
-	,
-\
-	t;
-	\
-	tcurrentUploadSpeed: number;
-	,
-\
-	t;
-	\
-	tactivePeers: number;
-	,
-\
-	t;
-	\
-	ttotalPeersConnected: number;
-	,
-\
-	t;
-	):
-	Metrics;
-	{
-\
-	t;
-	\
-	tconst;
-	avgDownloadSpeed =
-\
-	t;
-	\
-	t;
-	\
-	tthis;
-	.
-	downloadSpeedHistory;
-	.
-	length;
-	> 0
-\
-	t;
-	\
-	t;
-	\
-	t;
-	\
-	t?;
-	this;
-	.
-	downloadSpeedHistory;
-	.
-	reduce((a, b)
-	=>
-	a;
-	+
-	b;
-	, 0) /
-\
-	t;
-	\
-	t;
-	\
-	t;
-	\
-	t;
-	this;
-	.
-	downloadSpeedHistory;
-	.
-	length;
-	\
-	t;
-	\
-	t;
-	\
-	t;
-	\
-	t: 0;
+	/**
+	 * Get comprehensive metrics
+	 */
+	getMetrics(
+		totalDownloaded: number,
+		totalUploaded: number,
+		currentDownloadSpeed: number,
+		currentUploadSpeed: number,
+		activePeers: number,
+		totalPeersConnected: number,
+	): Metrics {
+		const avgDownloadSpeed =
+			this.downloadSpeedHistory.length > 0
+				? this.downloadSpeedHistory.reduce((a, b) => a + b, 0) /
+					this.downloadSpeedHistory.length
+				: 0;
 
-	\
-	t;
-	\
-	tconst;
-	avgUploadSpeed =
-\
-	t;
-	\
-	t;
-	\
-	tthis;
-	.
-	uploadSpeedHistory;
-	.
-	length;
-	> 0
-\
-	t;
-	\
-	t;
-	\
-	t;
-	\
-	t?;
-	this;
-	.
-	uploadSpeedHistory;
-	.
-	reduce((a, b)
-	=>
-	a;
-	+
-	b;
-	, 0) /
-\
-	t;
-	\
-	t;
-	\
-	t;
-	\
-	t;
-	this;
-	.
-	uploadSpeedHistory;
-	.
-	length;
-	\
-	t;
-	\
-	t;
-	\
-	t;
-	\
-	t: 0;
+		const avgUploadSpeed =
+			this.uploadSpeedHistory.length > 0
+				? this.uploadSpeedHistory.reduce((a, b) => a + b, 0) /
+					this.uploadSpeedHistory.length
+				: 0;
 
-	\
-	t;
-	\
-	treturn;
-	{
-\
-	t;
-	\
-	t;
-	\
-	ttotalDownloaded;
-	,
-\
-	t;
-	\
-	t;
-	\
-	ttotalUploaded;
-	,
-\
-	t;
-	\
-	t;
-	\
-	tcurrentDownloadSpeed;
-	,
-\
-	t;
-	\
-	t;
-	\
-	tcurrentUploadSpeed;
-	,
-\
-	t;
-	\
-	t;
-	\
-	tavgDownloadSpeed;
-	,
-\
-	t;
-	\
-	t;
-	\
-	tavgUploadSpeed;
-	,
-\
-	t;
-	\
-	t;
-	\
-	tactivePeers;
-	,
-\
-	t;
-	\
-	t;
-	\
-	ttotalPeersConnected;
-	,
-\
-	t;
-	\
-	t;
-	\
-	tblocksReceived: this;
-	.
-	blocksReceived;
-	,
-\
-	t;
-	\
-	t;
-	\
-	tblocksRequested: this;
-	.
-	blocksRequested;
-	,
-\
-	t;
-	\
-	t;
-	\
-	tprotocolErrors: this;
-	.
-	protocolErrors;
-	,
-\
-	t;
-	\
-	t;
-	\
-	tuptime: Date.now;
-	()
-	- this.
-	startTime;
-	,
-\
-	t;
-	\
-	t;
-}
-\t}
+		return {
+			totalDownloaded,
+			totalUploaded,
+			currentDownloadSpeed,
+			currentUploadSpeed,
+			avgDownloadSpeed,
+			avgUploadSpeed,
+			activePeers,
+			totalPeersConnected,
+			blocksReceived: this.blocksReceived,
+			blocksRequested: this.blocksRequested,
+			protocolErrors: this.protocolErrors,
+			uptime: Date.now() - this.startTime,
+		};
+	}
 
-\t/**
-\t * Reset all metrics
-\t */
-\treset(): void
-{
-	\t\tthis.blocksReceived = 0
-	\t\tthis.blocksRequested = 0
-	\t\tthis.protocolErrors = 0
-	\t\tthis.downloadSpeedHistory = []
-	\t\tthis.uploadSpeedHistory = []
-	\t\tthis.startTime = Date.now()
-	\t
-}
+	/**
+	 * Reset all metrics
+	 */
+	reset(): void {
+		this.blocksReceived = 0;
+		this.blocksRequested = 0;
+		this.protocolErrors = 0;
+		this.downloadSpeedHistory = [];
+		this.uploadSpeedHistory = [];
+		this.startTime = Date.now();
+	}
 }

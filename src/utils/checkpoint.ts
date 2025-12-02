@@ -6,156 +6,91 @@ import * as path from "node:path";
  * Allows resuming downloads from where they left off
  */
 
-export type Checkpoint = {};
-\ttorrentHash: string
-\ttimestamp: number
-\tverifiedPieces: number[] // Array of piece indices
-\tdownloadedBytes: number
-\tdownloadDir: string
-}
+export type Checkpoint = {
+	torrentHash: string;
+	timestamp: number;
+	verifiedPieces: number[]; // Array of piece indices
+	downloadedBytes: number;
+	downloadDir: string;
+};
 
 export class CheckpointManager {
-	\
-	tprivate;
-	readonly CHECKPOINT_INTERVAL_MS = 30000; // 30 seconds
-	\
-	tprivate;
-	checkpointTimer: NodeJS.Timeout | null = null;
+	private readonly CHECKPOINT_INTERVAL_MS = 30000; // 30 seconds
+	private checkpointTimer: NodeJS.Timeout | null = null;
 
-	\
-	t; /**
-\t * Get checkpoint file path
-\t */
-	\
-	tprivate;
-	getCheckpointPath(torrentHash: string, downloadDir: string): string {
-		\t\treturn path.join(downloadDir, `.$
-		torrentHash;
-		.checkpoint.json`)
-		\t
+	/**
+	 * Get checkpoint file path
+	 */
+	private getCheckpointPath(torrentHash: string, downloadDir: string): string {
+		return path.join(downloadDir, `.${torrentHash}.checkpoint.json`);
 	}
 
-	\
-	t; /**
-\t * Save checkpoint to disk
-\t */
-	\
-	tasync;
-	saveCheckpoint(checkpoint: Checkpoint): Promise<void> {
-		\t\ttry
-		\t\t\tconst checkpointPath = this.getCheckpointPath(
-\t\t\t\tcheckpoint.torrentHash,
-\t\t\t\tcheckpoint.downloadDir,
-\t\t\t)
-		\t\t\tawait fs.writeFile(checkpointPath, JSON.stringify(checkpoint, null, 2))
-		\t\t
-		catch (error)
-		\t\t\tconsole.error("Failed to save checkpoint:", error)
-		\t\t
-		\t
+	/**
+	 * Save checkpoint to disk
+	 */
+	async saveCheckpoint(checkpoint: Checkpoint): Promise<void> {
+		try {
+			const checkpointPath = this.getCheckpointPath(
+				checkpoint.torrentHash,
+				checkpoint.downloadDir,
+			);
+			await fs.writeFile(checkpointPath, JSON.stringify(checkpoint, null, 2));
+		} catch (error) {
+			console.error("Failed to save checkpoint:", error);
+		}
 	}
 
-	\
-	t; /**
-\t * Load checkpoint from disk
-\t */
-	\
-	tasync;
-	loadCheckpoint(
-	\
-	t;
-	\
-	ttorrentHash: string;
-	,
-\
-	t;
-	\
-	tdownloadDir: string;
-	,
-\
-	t;
-	):
-	Promise<Checkpoint | null> {
-\t\ttry 
-\t\t\tconst checkpointPath = this.getCheckpointPath(torrentHash, downloadDir);
-\t\t\tconst data = await fs.readFile(checkpointPath, "utf-8");
-\t\t\treturn JSON.parse(data) as Checkpoint;
-\t\tcatch 
-\t\t\treturn null; // No checkpoint found or error reading
-\t\t
-\t}
+	/**
+	 * Load checkpoint from disk
+	 */
+	async loadCheckpoint(
+		torrentHash: string,
+		downloadDir: string,
+	): Promise<Checkpoint | null> {
+		try {
+			const checkpointPath = this.getCheckpointPath(torrentHash, downloadDir);
+			const data = await fs.readFile(checkpointPath, "utf-8");
+			return JSON.parse(data) as Checkpoint;
+		} catch {
+			return null; // No checkpoint found or error reading
+		}
+	}
 
-	\
-	t; /**
-\t * Delete checkpoint file
-\t */
-	\
-	tasync;
-	deleteCheckpoint(
-	\
-	t;
-	\
-	ttorrentHash: string;
-	,
-\
-	t;
-	\
-	tdownloadDir: string;
-	,
-\
-	t;
-	):
-	Promise<void> {
-\t\ttry 
-\t\t\tconst checkpointPath = this.getCheckpointPath(torrentHash, downloadDir);
-\t\t\tawait fs.unlink(checkpointPath);
-\t\tcatch 
-\t\t\t// Ignore errors (file might not exist)
-\t\t
-\t}
+	/**
+	 * Delete checkpoint file
+	 */
+	async deleteCheckpoint(
+		torrentHash: string,
+		downloadDir: string,
+	): Promise<void> {
+		try {
+			const checkpointPath = this.getCheckpointPath(torrentHash, downloadDir);
+			await fs.unlink(checkpointPath);
+		} catch {
+			// Ignore errors (file might not exist)
+		}
+	}
 
-	\
-	t; /**
-\t * Start periodic checkpoint saving
-\t */
-	\
-	tstartPeriodicSave(
-	\
-	t;
-	\
-	tgetCheckpoint: () => Checkpoint;
-	,
-\
-	t;
-	\
-	tinterval: number = this.CHECKPOINT_INTERVAL_MS;
-	,
-\
-	t;
+	/**
+	 * Start periodic checkpoint saving
+	 */
+	startPeriodicSave(
+		getCheckpoint: () => Checkpoint,
+		interval: number = this.CHECKPOINT_INTERVAL_MS,
 	): void {
-\
-	t;
-	\
-	tthis;
-	.
-	checkpointTimer = setInterval(async () => {
-		\t\t\tconst checkpoint = getCheckpoint()
-		\t\t\tawait this.saveCheckpoint(checkpoint)
-		\t\t
-	}, interval);
-	\
-	t;
-}
+		this.checkpointTimer = setInterval(async () => {
+			const checkpoint = getCheckpoint();
+			await this.saveCheckpoint(checkpoint);
+		}, interval);
+	}
 
-\t/**
-\t * Stop periodic checkpoint saving
-\t */
-\tstopPeriodicSave(): void
-{
-	\t\tif (this.checkpointTimer)
-	\t\t\tclearInterval(this.checkpointTimer)
-	\t\t\tthis.checkpointTimer = null
-	\t\t
-	\t
-}
+	/**
+	 * Stop periodic checkpoint saving
+	 */
+	stopPeriodicSave(): void {
+		if (this.checkpointTimer) {
+			clearInterval(this.checkpointTimer);
+			this.checkpointTimer = null;
+		}
+	}
 }

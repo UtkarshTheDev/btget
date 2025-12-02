@@ -1,6 +1,6 @@
 import type { RequestPayload } from "../../protocol/messages";
 import { buildChoke, buildPiece, buildUnchoke } from "../../protocol/messages";
-import Logger, { LogCategory, LogLevel } from "../../utils/logger";
+import Logger, { LogCategory } from "../../utils/logger";
 import type { ExtendedSocket } from "./EndgameManager";
 import type { FileWriter } from "./FileWriter";
 
