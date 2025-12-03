@@ -26,7 +26,7 @@ export const Header = () => {
 				<Text color="cyan" bold>
 					BTGET
 				</Text>
-				<Text dimColor> v1.0.0</Text>
+				<Text dimColor> v1.1.0</Text>
 			</Box>
 			<Box flexDirection="row" alignItems="center">
 				<Text>

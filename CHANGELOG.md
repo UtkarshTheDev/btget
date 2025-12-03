@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-12-03
+
+### Added
+
+#### Enhanced Logging and Debugging System
+- **Hierarchical Log Levels**: Five-level logging system (TRACE, DEBUG, INFO, WARN, ERROR) for granular control over debug output
+- **Log Categories**: Nine specialized categories for filtering by subsystem:
+  - `PEER` - Peer connection lifecycle and management
+  - `UPLOAD` - Upload manager decisions, choking rounds, and piece serving
+  - `DOWNLOAD` - Download progress, piece reception, and completion
+  - `DHT` - Distributed Hash Table operations and peer discovery
+  - `TRACKER` - Tracker communication, announces, and peer lists
+  - `PIECE` - Piece verification, hash checks, and assembly
+  - `QUEUE` - Request queue operations and management
+  - `PROTOCOL` - BitTorrent protocol message parsing and handling
+  - `SYSTEM` - System-level events, initialization, and shutdown
+- **Advanced CLI Flags**: New command-line options for debugging:
+  - `--debug` - Enable INFO level logging (suppress TUI)
+  - `--verbose` / `-v` - Enable DEBUG level logging with detailed operations
+  - `--trace` - Enable TRACE level logging for ultra-verbose output
+  - `--log-category=<categories>` - Filter logs by one or more categories (comma-separated)
+  - `--log-level=<level>` - Set minimum log level (TRACE, DEBUG, INFO, WARN, ERROR)
+- **Rate Limiting**: Throttle mechanism to prevent log spam from repetitive messages
+- **Aggregate Statistics**: Periodic metric summaries logged every 30 seconds
+- **Structured Logging**: Consistent log format with timestamps, levels, categories, and structured data objects
+- **Category Filtering**: Ability to focus on specific subsystems for targeted debugging
+- **Comprehensive Documentation**: 
+  - Added `docs/LOGGING.md` with complete logging guide
+  - Updated `CONTRIBUTING.md` with logging best practices for contributors
+  - Updated `README.md` with quick debugging examples
+
+### Changed
+- **Console Output**: Replaced all raw `console.log` calls with categorized Logger calls across the codebase
+- **Debug Mode Behavior**: `--verbose` and `--trace` flags now automatically suppress TUI (no need for `--debug`)
+- **Upload Logging**: Converted noisy choke/unchoke messages to aggregate summaries
+- **Tracker Logging**: Replaced emoji-heavy console logs with structured Logger output
+- **Download Logging**: Migrated download progress messages to use LogCategory.DOWNLOAD
+
+### Fixed
+- **Log Filtering**: Category filtering now works correctly - only shows logs from specified categories
+- **TUI Suppression**: Fixed issue where `--verbose` and `--trace` would show TUI instead of logs
+- **Log Consistency**: Eliminated mixed usage of `console.log` and Logger throughout the codebase
+
+### Developer Experience
+- **Logger API**: Simple, consistent API for all logging needs
+  - `Logger.trace(category, message, data?)` - Ultra-verbose operation logging
+  - `Logger.debug(category, message, data?)` - Detailed debugging information
+  - `Logger.info(category, message, data?)` - Important milestones and events
+  - `Logger.warn(category, message, data?)` - Recoverable issues and warnings
+  - `Logger.error(category, message, data?)` - Critical errors and failures
+  - `Logger.throttle(key, interval, callback)` - Rate-limited logging
+  - `Logger.aggregate(key, value)` - Metric aggregation with periodic flushing
+
 ## [1.0.0] - 2025-11-29
 
 ### Added
