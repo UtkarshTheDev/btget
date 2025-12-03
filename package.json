@@ -1,11 +1,11 @@
 {
 	"name": "btget",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "A blazing-fast, modern BitTorrent client for the command line",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"bin": {
-		"btget": "./dist/index.js"
+		"btget": "dist/index.js"
 	},
 	"files": [
 		"dist",
@@ -85,7 +85,6 @@
 		"ink-spinner": "^5.0.0",
 		"ink-table": "^3.1.0",
 		"react": "^19.2.0",
-		"react-devtools-core": "^7.0.1",
 		"react-dom": "^19.2.0",
 		"yargs": "^17.7.2"
 	},
@@ -93,9 +92,7 @@
 		"type": "github",
 		"url": "https://github.com/sponsors/UtkarshTheDev"
 	},
-	"overrides": {
-		"ink": {
-			"react-devtools-core": "7.0.1"
-		}
+	"optionalDependencies": {
+		"react-devtools-core": "^6.1.5"
 	}
 }
