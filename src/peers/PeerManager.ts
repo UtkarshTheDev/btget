@@ -139,6 +139,7 @@ export class PeerManager {
 					return; // Skip recently failed peer
 				}
 
+				this.knownPeers.add(peerId);
 				validPeers.push(peer);
 			}
 		});
