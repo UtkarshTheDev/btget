@@ -30,13 +30,13 @@ export interface HeroProps {
 	uploadSpeedHistory: number[]; // Upload speed history
 }
 
-export interface SwarmGridProps {
+export interface StatsPanelProps {
 	peers: number;
 	seeds: number;
 	leechers: number;
-	ratio: number; // Upload/download ratio
-	uploaded: string; // Formatted uploaded bytes
-	downloaded: string; // Formatted downloaded bytes
+	ratio: number;
+	uploaded: string;
+	downloaded: string;
 	trackersActive: number;
 	trackersTotal: number;
 }
