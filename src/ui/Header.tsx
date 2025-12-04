@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
+import { THEME } from "./theme";
 
 export const Header = () => {
 	const [blink, setBlink] = useState(true);
@@ -15,25 +16,38 @@ export const Header = () => {
 	}, []);
 	return (
 		<Box
-			borderStyle="double"
-			borderColor="white"
 			flexDirection="row"
 			justifyContent="space-between"
 			paddingX={1}
-			marginBottom={1}
+			paddingY={0}
+			marginBottom={0}
+			borderStyle="classic"
+			borderColor={THEME.catppuccin.surface2}
 		>
-			<Box flexDirection="row" alignItems="center">
-				<Text color="cyan" bold>
-					BTGET
+			<Box flexDirection="row" alignItems="center" gap={1}>
+				<Text
+					color={THEME.catppuccin.base}
+					backgroundColor={THEME.catppuccin.mauve}
+					bold
+				>
+					{" BTGET "}
 				</Text>
-				<Text dimColor> v1.1.0</Text>
+				<Text color={THEME.catppuccin.overlay1}>v1.1.0</Text>
 			</Box>
 			<Box flexDirection="row" alignItems="center">
 				<Text>
-					[ <Text bold>ONLINE</Text>{" "}
-					<Text color={blink ? "green" : "gray"}>●</Text> ]
+					<Text color={THEME.catppuccin.subtext0}>[ </Text>
+					<Text bold color={THEME.catppuccin.green}>
+						ONLINE
+					</Text>{" "}
+					<Text
+						color={blink ? THEME.catppuccin.green : THEME.catppuccin.surface2}
+					>
+						●
+					</Text>
+					<Text color={THEME.catppuccin.subtext0}> ]</Text>
 				</Text>
-				<Text dimColor>
+				<Text color={THEME.catppuccin.overlay1}>
 					{" "}
 					|{" "}
 					{new Date().toLocaleDateString("en-US", {
