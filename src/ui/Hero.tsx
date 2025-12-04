@@ -1,4 +1,6 @@
 import { Box, Text } from "ink";
+import { ProgressBar } from "./components/ProgressBar";
+import { THEME } from "./theme";
 import type { HeroProps } from "./types";
 
 export const Hero = ({
@@ -13,7 +15,6 @@ export const Hero = ({
 }: HeroProps) => {
 	const KB_THRESHOLD = 1024;
 	const PROGRESS_BAR_WIDTH = 60;
-	const PERCENTAGE_DIVISOR = 100;
 
 	const formatSpeed = (speedKb: number) => {
 		if (!speedKb || speedKb === 0) return "0 KB/s";
@@ -25,68 +26,98 @@ export const Hero = ({
 
 	return (
 		<Box
-			borderStyle="single"
-			borderColor="blue"
+			borderStyle="round"
+			borderColor={THEME.catppuccin.blue}
 			flexDirection="column"
-			paddingX={1}
+			paddingX={2}
+			paddingY={1}
 			marginBottom={1}
 		>
-			{/* Top Info */}
-			<Box flexDirection="column" marginBottom={1}>
-				<Text bold color="white">
-					📄 {filename}
-				</Text>
-				<Text dimColor>
-					Size: {size} | Hash: {hash}
-				</Text>
-			</Box>
-
-			{/* Center Status */}
-			<Box justifyContent="center" marginBottom={1} marginTop={1}>
-				<Text color="yellow">{status}</Text>
-			</Box>
-
-			{/* Stats */}
-			<Box justifyContent="center" marginBottom={1}>
-				<Text>
-					<Text color="cyan">↓ {formatSpeed(speed)}</Text>
-					<Text dimColor> | </Text>
-					<Text color="green">↑ {formatSpeed(uploadSpeed)}</Text>
-					<Text dimColor>
-						{" "}
-						| ETA: {eta} | {(progress || 0).toFixed(1)}%
+			{/* Header Row: Filename & Status */}
+			<Box
+				flexDirection="row"
+				justifyContent="space-between"
+				marginBottom={2}
+				width="100%"
+			>
+				<Box flexDirection="row" alignItems="center" gap={1}>
+					<Text color={THEME.catppuccin.blue}>📄</Text>
+					<Text bold color={THEME.catppuccin.text}>
+						{filename}
 					</Text>
-				</Text>
+				</Box>
+				<Box flexDirection="row" alignItems="center" gap={1}>
+					<Text color={THEME.catppuccin.overlay0}>[</Text>
+					<Text color={THEME.catppuccin.yellow} bold>
+						● {status}
+					</Text>
+					<Text color={THEME.catppuccin.overlay0}>]</Text>
+				</Box>
+			</Box>
+
+			{/* Metadata Row */}
+			<Box flexDirection="row" justifyContent="space-between" marginBottom={2}>
+				<Box flexDirection="row" gap={2}>
+					<Text color={THEME.catppuccin.subtext0}>
+						💾 <Text color={THEME.catppuccin.overlay1}>{size}</Text>
+					</Text>
+					<Text color={THEME.catppuccin.subtext0}>
+						#️⃣ <Text color={THEME.catppuccin.overlay1}>{hash}</Text>
+					</Text>
+				</Box>
+				<Box>
+					<Text color={THEME.catppuccin.blue} bold>
+						{(progress || 0).toFixed(1)}%
+					</Text>
+				</Box>
 			</Box>
 
 			{/* Progress Bar */}
-			<Box justifyContent="center" marginY={1}>
-				<Text color="cyan">
-					{"█".repeat(
-						Math.max(
-							0,
-							Math.min(
-								PROGRESS_BAR_WIDTH,
-								Math.floor(
-									(Math.min(100, progress || 0) / PERCENTAGE_DIVISOR) *
-										PROGRESS_BAR_WIDTH,
-								),
-							),
-						),
-					)}
-				</Text>
-				<Text dimColor>
-					{"░".repeat(
-						Math.max(
-							0,
-							PROGRESS_BAR_WIDTH -
-								Math.floor(
-									(Math.min(100, progress || 0) / PERCENTAGE_DIVISOR) *
-										PROGRESS_BAR_WIDTH,
-								),
-						),
-					)}
-				</Text>
+			<Box justifyContent="center" marginBottom={2}>
+				<ProgressBar
+					progress={progress}
+					width={PROGRESS_BAR_WIDTH}
+					color={THEME.catppuccin.blue}
+					emptyColor={THEME.catppuccin.surface1}
+				/>
+			</Box>
+
+			{/* Stats Grid */}
+			<Box
+				flexDirection="row"
+				justifyContent="space-around"
+				paddingTop={1}
+				borderStyle="single"
+				borderTop={true}
+				borderBottom={false}
+				borderLeft={false}
+				borderRight={false}
+				borderColor={THEME.catppuccin.surface1}
+			>
+				<Box flexDirection="column" alignItems="center">
+					<Text color={THEME.catppuccin.green} bold>
+						↑ {formatSpeed(uploadSpeed)}
+					</Text>
+					<Text color={THEME.catppuccin.subtext1} dimColor>
+						Upload
+					</Text>
+				</Box>
+				<Box flexDirection="column" alignItems="center">
+					<Text color={THEME.catppuccin.blue} bold>
+						↓ {formatSpeed(speed)}
+					</Text>
+					<Text color={THEME.catppuccin.subtext1} dimColor>
+						Download
+					</Text>
+				</Box>
+				<Box flexDirection="column" alignItems="center">
+					<Text color={THEME.catppuccin.mauve} bold>
+						⏱ {eta}
+					</Text>
+					<Text color={THEME.catppuccin.subtext1} dimColor>
+						ETA
+					</Text>
+				</Box>
 			</Box>
 		</Box>
 	);
