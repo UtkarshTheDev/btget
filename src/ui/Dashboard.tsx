@@ -1,7 +1,7 @@
 import { Box } from "ink";
 import { Header } from "./Header";
 import { Hero } from "./Hero";
-import { SwarmGrid } from "./SwarmGrid";
+import { StatsPanel } from "./StatsPanel";
 import type { TorrentState } from "./types";
 
 // Helper function to format bytes
@@ -29,14 +29,14 @@ export const Dashboard = (props: TorrentState) => {
 				speedHistory={props.speedHistory}
 				uploadSpeedHistory={props.uploadSpeedHistory}
 			/>
-			<SwarmGrid
+			<StatsPanel
 				peers={props.peers}
 				seeds={props.seeds}
 				leechers={props.leechers}
 				ratio={props.ratio}
 				uploaded={formatBytes(props.uploaded)}
 				downloaded={formatBytes(props.downloaded)}
-				trackersActive={3}
+				trackersActive={3} // Hardcoded for now as per previous implementation
 				trackersTotal={8}
 			/>
 		</Box>
