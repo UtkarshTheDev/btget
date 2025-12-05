@@ -9,11 +9,16 @@ interface DHTOptions {
 	port?: number;
 }
 
+type SocketState = "idle" | "binding" | "ready" | "closing" | "closed";
+
 export class DistributedHashTable extends EventEmitter {
 	private socket: dgram.Socket;
 	private routingTable: RoutingTable;
 	private readonly localId: Buffer;
-	private isStopped = false; // Track if DHT has been stopped
+
+	// Socket lifecycle management
+	private socketState: SocketState = "idle";
+	private activeTimers = new Set<NodeJS.Timeout>();
 
 	// FIX #6: Bootstrap retry configuration
 	private bootstrapAttempts = 0;
@@ -41,14 +46,38 @@ export class DistributedHashTable extends EventEmitter {
 		super();
 		this.localId = crypto.randomBytes(this.NODE_ID_LENGTH);
 		this.routingTable = new RoutingTable();
+
+		// Create socket and set up lifecycle handlers
+		this.socketState = "idle";
 		this.socket = dgram.createSocket("udp4");
+		Logger.debug(LogCategory.DHT, "DHT socket created");
 
 		this.socket.on("message", (msg, rinfo) => this.handleMessage(msg, rinfo));
-		this.socket.on("error", (err) => console.error("DHT Error:", err));
+
+		this.socket.on("error", (err) => {
+			Logger.error(LogCategory.DHT, "DHT socket error", { error: err.message });
+			if (this.socketState !== "closed" && this.socketState !== "closing") {
+				this.stop();
+			}
+		});
+
+		this.socket.on("listening", () => {
+			this.socketState = "ready";
+			const addr = this.socket.address();
+			Logger.debug(LogCategory.DHT, "DHT socket ready", {
+				port: addr.port,
+				address: addr.address,
+			});
+		});
+
+		this.socket.on("close", () => {
+			this.socketState = "closed";
+			Logger.debug(LogCategory.DHT, "DHT socket closed");
+		});
 
 		const port = options.port || this.DEFAULT_PORT;
+		this.socketState = "binding";
 		this.socket.bind(port, () => {
-			// console.log(`DHT listening on port ${port}`);
 			this.startBootstrap();
 		});
 	}
@@ -58,9 +87,18 @@ export class DistributedHashTable extends EventEmitter {
 	 */
 	private async startBootstrap(): Promise<void> {
 		if (this.bootstrapInProgress) return;
+		if (this.socketState !== "ready") return;
 		this.bootstrapInProgress = true;
 
 		while (this.bootstrapAttempts < this.MAX_BOOTSTRAP_ATTEMPTS) {
+			// Check if socket was closed during bootstrap
+			const currentState = this.socketState;
+			if (currentState === "closing" || currentState === "closed") {
+				Logger.debug(LogCategory.DHT, "Bootstrap cancelled - socket closed");
+				this.bootstrapInProgress = false;
+				return;
+			}
+
 			try {
 				const attempt = this.bootstrapAttempts + 1;
 				Logger.debug(
@@ -68,15 +106,16 @@ export class DistributedHashTable extends EventEmitter {
 					`DHT Bootstrap attempt ${attempt}/${this.MAX_BOOTSTRAP_ATTEMPTS}`,
 				);
 
-				// Perform bootstrap with timeout
+				// Perform bootstrap with timeout using tracked timer
 				await Promise.race([
 					this.performBootstrap(),
-					new Promise<void>((_, reject) =>
-						setTimeout(
-							() => reject(new Error("Bootstrap timeout")),
-							this.BOOTSTRAP_TIMEOUT_MS,
-						),
-					),
+					new Promise<void>((_, reject) => {
+						const timer = setTimeout(() => {
+							this.activeTimers.delete(timer);
+							reject(new Error("Bootstrap timeout"));
+						}, this.BOOTSTRAP_TIMEOUT_MS);
+						this.activeTimers.add(timer);
+					}),
 				]);
 
 				Logger.debug(
@@ -90,7 +129,14 @@ export class DistributedHashTable extends EventEmitter {
 				this.bootstrapAttempts++;
 
 				if (this.bootstrapAttempts < this.MAX_BOOTSTRAP_ATTEMPTS) {
-					// Exponential backoff: 1s, 2s, 4s
+					// Check again before backoff
+					const currentState = this.socketState;
+					if (currentState === "closing" || currentState === "closed") {
+						this.bootstrapInProgress = false;
+						return;
+					}
+
+					// Exponential backoff: 1s, 2s, 4s with tracked timer
 					const backoffMs = 1000 * 2 ** (this.bootstrapAttempts - 1);
 					Logger.debug(
 						LogCategory.DHT,
@@ -98,7 +144,13 @@ export class DistributedHashTable extends EventEmitter {
 							`retrying in ${backoffMs}ms...`,
 					);
 
-					await new Promise((resolve) => setTimeout(resolve, backoffMs));
+					await new Promise((resolve) => {
+						const timer = setTimeout(() => {
+							this.activeTimers.delete(timer);
+							resolve(undefined);
+						}, backoffMs);
+						this.activeTimers.add(timer);
+					});
 				}
 			}
 		}
@@ -140,6 +192,12 @@ export class DistributedHashTable extends EventEmitter {
 		target: Buffer,
 	): Promise<void> {
 		return new Promise((resolve, reject) => {
+			// Check socket state before starting
+			if (this.socketState !== "ready") {
+				reject(new Error("Socket not ready"));
+				return;
+			}
+
 			const tid = crypto.randomBytes(this.TRANSACTION_ID_LENGTH);
 			const msg = {
 				t: tid,
@@ -151,16 +209,20 @@ export class DistributedHashTable extends EventEmitter {
 				},
 			};
 
-			// Set up one-time listener for response
+			// Set up one-time listener for response with tracked timer
 			const timeout = setTimeout(() => {
+				this.activeTimers.delete(timeout);
+				this.socket.off("message", responseHandler);
 				reject(new Error("Node timeout"));
 			}, 5000);
+			this.activeTimers.add(timeout);
 
 			const responseHandler = (response: Buffer) => {
 				try {
 					const decoded = bencode.decode(response);
 					if (decoded.t?.equals(tid)) {
 						clearTimeout(timeout);
+						this.activeTimers.delete(timeout);
 						this.socket.off("message", responseHandler);
 						resolve();
 					}
@@ -299,17 +361,24 @@ export class DistributedHashTable extends EventEmitter {
 	}
 
 	/**
-	 * Send UDP message
+	 * Send UDP message (safe wrapper)
 	 */
 	private send(msg: unknown, host: string, port: number): void {
-		// Don't send if socket is closed
-		if (this.isStopped) return;
+		// Only send if socket is ready
+		if (this.socketState !== "ready") {
+			Logger.debug(LogCategory.DHT, "Skipped send - socket not ready", {
+				state: this.socketState,
+			});
+			return;
+		}
 
 		try {
 			const buf = bencode.encode(msg);
 			this.socket.send(buf, port, host);
-		} catch (_err) {
-			// Silently ignore errors if socket is closed
+		} catch (err) {
+			Logger.debug(LogCategory.DHT, "Send failed", {
+				error: err instanceof Error ? err.message : String(err),
+			});
 		}
 	}
 
@@ -330,16 +399,33 @@ export class DistributedHashTable extends EventEmitter {
 	}
 
 	/**
-	 * Stop DHT
+	 * Stop DHT with proper cleanup
 	 */
 	stop(): void {
-		if (this.isStopped) return;
+		if (this.socketState === "closing" || this.socketState === "closed") {
+			return;
+		}
 
-		this.isStopped = true;
+		Logger.debug(LogCategory.DHT, "DHT stopping", {
+			activeTimers: this.activeTimers.size,
+		});
+		this.socketState = "closing";
+
+		// Clear all pending timers
+		for (const timer of this.activeTimers) {
+			clearTimeout(timer);
+		}
+		this.activeTimers.clear();
+
+		// Close socket
 		try {
 			this.socket.close();
-		} catch (_err) {
-			// Socket may already be closed
+			// socketState will be set to 'closed' by the 'close' event handler
+		} catch (err) {
+			Logger.debug(LogCategory.DHT, "Socket close error", {
+				error: err instanceof Error ? err.message : String(err),
+			});
+			this.socketState = "closed";
 		}
 	}
 }

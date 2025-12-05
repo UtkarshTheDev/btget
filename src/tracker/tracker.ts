@@ -237,33 +237,61 @@ function getPeersUdp(
 	let attempts = 0;
 	const maxAttempts = 3;
 
+	// State management for the socket and timers
+	let socketClosed = false;
+	let timer: NodeJS.Timeout | null = null;
+
+	const cleanup = () => {
+		if (!socketClosed) {
+			try {
+				socket.close();
+			} catch (_e) {
+				// Ignore error if socket is already closed or not yet bound
+			} finally {
+				socketClosed = true;
+			}
+		}
+		if (timer) {
+			clearTimeout(timer);
+			timer = null;
+		}
+	};
+
 	// Reduced timeout for faster peer discovery
-	const transactionTimeout = setTimeout(() => {
-		try {
-			socket.close();
-		} catch (_e) {}
-		callback([]); // Return empty array instead of logging error
+	timer = setTimeout(() => {
+		if (!socketClosed) {
+			Logger.debug(LogCategory.TRACKER, `UDP tracker timeout for ${url}`);
+			cleanup();
+			callback([]); // Return empty array instead of logging error
+		}
 	}, 8000);
 
 	const sendConnectRequest = () => {
+		if (socketClosed) return;
+
 		attempts++;
 		transactionId = crypto.randomBytes(4);
 		const connReq = buildConnReq(transactionId);
 
 		udpSend(socket, connReq, url, (err) => {
+			if (socketClosed) return;
+
 			if (err && attempts < maxAttempts) {
 				setTimeout(sendConnectRequest, 1000 * attempts); // Exponential backoff
 			} else if (err) {
-				clearTimeout(transactionTimeout);
-				try {
-					socket.close();
-				} catch (_e) {}
+				Logger.debug(
+					LogCategory.TRACKER,
+					`UDP connect error for ${url}: ${err.message}`,
+				);
+				cleanup();
 				callback([]);
 			}
 		});
 	};
 
 	socket.on("message", (msg) => {
+		if (socketClosed) return;
+
 		try {
 			if (respType(msg) === "connect") {
 				const connResp = parseConnResp(msg);
@@ -279,14 +307,24 @@ function getPeersUdp(
 					torrent,
 					transactionId,
 				);
-				udpSend(socket, announceReq, url, () => {});
+				udpSend(socket, announceReq, url, (err) => {
+					if (socketClosed) return;
+					if (err) {
+						Logger.debug(
+							LogCategory.TRACKER,
+							`UDP announce send error for ${url}: ${err.message}`,
+						);
+						cleanup();
+						callback([]);
+					}
+				});
 			} else if (respType(msg) === "announce") {
 				// Verify transaction ID matches
 				if (!transactionId.equals(msg.slice(4, 8))) {
 					return; // Ignore mismatched responses
 				}
 
-				clearTimeout(transactionTimeout);
+				cleanup(); // Clear timeout and close socket as we got a response
 				const announceResp = parseAnnounceResp(msg);
 
 				// Filter and validate peers
@@ -303,21 +341,32 @@ function getPeersUdp(
 					seeds: announceResp.seeders,
 					leechers: announceResp.leechers,
 				});
-				try {
-					socket.close();
-				} catch (_e) {}
 			}
 		} catch (_error) {
 			// Ignore malformed responses
+			Logger.debug(
+				LogCategory.TRACKER,
+				`UDP message parsing error for ${url}: ${_error}`,
+			);
 		}
 	});
 
-	socket.on("error", () => {
-		clearTimeout(transactionTimeout);
-		try {
-			socket.close();
-		} catch (_e) {}
+	socket.on("error", (err) => {
+		if (socketClosed) return;
+		Logger.debug(
+			LogCategory.TRACKER,
+			`UDP socket error for ${url}: ${err.message}`,
+		);
+		cleanup();
 		callback([]);
+	});
+
+	socket.on("close", () => {
+		socketClosed = true;
+		if (timer) {
+			clearTimeout(timer);
+			timer = null;
+		}
 	});
 
 	// Start the connection process
