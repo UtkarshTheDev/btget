@@ -95,6 +95,11 @@ export default class Pieces {
 			return false;
 		}
 
+		// FIX: Don't request blocks from already verified pieces
+		if (this._verifier.isVerified(pieceBlock.index)) {
+			return false;
+		}
+
 		const blockIndex = Math.floor(pieceBlock.begin / BLOCK_LEN);
 
 		const requestedPiece = this._requested[pieceBlock.index];

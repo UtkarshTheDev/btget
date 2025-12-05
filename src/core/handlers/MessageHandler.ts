@@ -333,7 +333,13 @@ export class MessageHandler {
 		}
 
 		// Fix 3: Aggressively request multiple batches to eliminate stop-and-wait
-		if (requestMorePieces && !socket.choked && !socket.destroyed) {
+		// FIX: Only request more pieces if download is NOT complete
+		if (
+			requestMorePieces &&
+			!socket.choked &&
+			!socket.destroyed &&
+			!pieces.isDone()
+		) {
 			for (let i = 0; i < 5; i++) {
 				requestMorePieces(socket);
 			}

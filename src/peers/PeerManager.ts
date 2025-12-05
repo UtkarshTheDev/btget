@@ -377,6 +377,11 @@ export class PeerManager {
 		socket: ExtendedSocket,
 		batchSize: number,
 	): void {
+		// FIX: Stop requesting pieces if download is complete
+		if (this.pieces.isDone()) {
+			return;
+		}
+
 		if (!socket.activeRequests) socket.activeRequests = new Map();
 		if (!socket.requestTimestamps) socket.requestTimestamps = new Map();
 
@@ -411,6 +416,11 @@ export class PeerManager {
 	 * FIX #2: Adaptive batch sizing based on network conditions
 	 */
 	requestPieces(socket: ExtendedSocket): void {
+		// FIX: Stop requesting pieces if download is complete
+		if (this.pieces.isDone()) {
+			return;
+		}
+
 		if (!socket.activeRequests) socket.activeRequests = new Map();
 		if (!socket.requestTimestamps) socket.requestTimestamps = new Map();
 
