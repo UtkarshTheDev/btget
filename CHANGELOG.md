@@ -5,7 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-12-06
+
+### Added
+- **StatsPanel Component**: New dedicated component for displaying torrent statistics (peers, seeds, leechers, ratio, upload/download totals, tracker counts)
+- **ProgressBar Component**: Reusable progress bar component with customizable colors and width
+- **Catppuccin Theme**: Introduced consistent color theming system across the UI for a modern, cohesive aesthetic
+
+### Changed
+- **Hero Component Layout**: Redesigned layout for improved information hierarchy
+  - Download size now appears directly below filename
+  - Hash moved to top-right corner with progress percentage stacked below it
+  - Status text centered above progress bar with improved spacing
+- **Header Styling**: Updated to use Catppuccin theme colors for consistent visual design
+- **UI Architecture**: Replaced SwarmGrid with StatsPanel for better component organization
+
+### Fixed
+- **Download Speed Display**: Fixed TUI showing 0 KB/s by correctly tracking known peers
+- **Download Completion**: Prevented piece/block requests after download completes, eliminating redundant network traffic
+- **Socket Lifecycle Management**: Improved DHT and tracker socket state handling with explicit lifecycle tracking
+  - Added socket state tracking to prevent operations on closed sockets
+  - Implemented proper timer cleanup on stop or error
+  - Enhanced error logging for socket failures
+
+### Removed
+- **SwarmGrid Component**: Removed unused component to reduce bundle size and code complexity
+
 ## [1.1.1] - 2025-12-03
+
 
 ### Fixed
 - Resolved npm peer dependency warnings by removing direct `react-devtools-core` dependency

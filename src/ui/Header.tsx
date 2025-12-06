@@ -32,7 +32,7 @@ export const Header = () => {
 				>
 					{" BTGET "}
 				</Text>
-				<Text color={THEME.catppuccin.overlay1}>v1.1.0</Text>
+				<Text color={THEME.catppuccin.overlay1}>v1.2.0</Text>
 			</Box>
 			<Box flexDirection="row" alignItems="center">
 				<Text>
