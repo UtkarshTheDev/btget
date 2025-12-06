@@ -33,41 +33,43 @@ export const Hero = ({
 			paddingY={1}
 			marginBottom={1}
 		>
-			{/* Header Row: Filename & Status */}
+			{/* Header Row: Filename, Size & Hash/Progress */}
 			<Box
 				flexDirection="row"
 				justifyContent="space-between"
-				marginBottom={2}
+				marginBottom={1}
 				width="100%"
 			>
-				<Box flexDirection="row" alignItems="center" gap={1}>
-					<Text color={THEME.catppuccin.blue}>📄</Text>
-					<Text bold color={THEME.catppuccin.text}>
-						{filename}
-					</Text>
-				</Box>
-				<Box flexDirection="row" alignItems="center" gap={1}>
-					<Text color={THEME.catppuccin.overlay0}>[</Text>
-					<Text color={THEME.catppuccin.yellow} bold>
-						● {status}
-					</Text>
-					<Text color={THEME.catppuccin.overlay0}>]</Text>
-				</Box>
-			</Box>
-
-			{/* Metadata Row */}
-			<Box flexDirection="row" justifyContent="space-between" marginBottom={2}>
-				<Box flexDirection="row" gap={2}>
+				{/* Left: Filename and Size */}
+				<Box flexDirection="column" gap={0}>
+					<Box flexDirection="row" alignItems="center" gap={1}>
+						<Text color={THEME.catppuccin.blue}>📄</Text>
+						<Text bold color={THEME.catppuccin.text}>
+							{filename}
+						</Text>
+					</Box>
 					<Text color={THEME.catppuccin.subtext0}>
 						💾 <Text color={THEME.catppuccin.overlay1}>{size}</Text>
 					</Text>
-					<Text color={THEME.catppuccin.subtext0}>
-						#️⃣ <Text color={THEME.catppuccin.overlay1}>{hash}</Text>
-					</Text>
 				</Box>
-				<Box>
+
+				{/* Right: Hash and Progress % */}
+				<Box flexDirection="column" alignItems="flex-end" gap={0}>
+					<Box flexDirection="row" alignItems="center" gap={1}>
+						<Text color={THEME.catppuccin.subtext0}>#️⃣</Text>
+						<Text color={THEME.catppuccin.overlay1}>{hash}</Text>
+					</Box>
 					<Text color={THEME.catppuccin.blue} bold>
 						{(progress || 0).toFixed(1)}%
+					</Text>
+				</Box>
+			</Box>
+
+			{/* Status Row (Centered) */}
+			<Box justifyContent="center" marginBottom={2}>
+				<Box flexDirection="row" alignItems="center" gap={1}>
+					<Text color={THEME.catppuccin.yellow} bold>
+						● {status}
 					</Text>
 				</Box>
 			</Box>
