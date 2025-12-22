@@ -92,7 +92,7 @@ export class DistributedHashTable extends EventEmitter {
 
 		while (this.bootstrapAttempts < this.MAX_BOOTSTRAP_ATTEMPTS) {
 			// Check if socket was closed during bootstrap
-			const currentState = this.socketState;
+			const currentState = this.socketState as SocketState;
 			if (currentState === "closing" || currentState === "closed") {
 				Logger.debug(LogCategory.DHT, "Bootstrap cancelled - socket closed");
 				this.bootstrapInProgress = false;
@@ -130,7 +130,7 @@ export class DistributedHashTable extends EventEmitter {
 
 				if (this.bootstrapAttempts < this.MAX_BOOTSTRAP_ATTEMPTS) {
 					// Check again before backoff
-					const currentState = this.socketState;
+					const currentState = this.socketState as SocketState;
 					if (currentState === "closing" || currentState === "closed") {
 						this.bootstrapInProgress = false;
 						return;
