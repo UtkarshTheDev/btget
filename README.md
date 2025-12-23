@@ -1,5 +1,7 @@
 <div align="center">
 
+![Demo](showcase/demo.png)
+
 # 🚀 btget - BitTorrent Get CLI
 
 ![BitTorrent CLI](https://img.shields.io/badge/BitTorrent-CLI-blue?style=for-the-badge&logo=bittorrent)
