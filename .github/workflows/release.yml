@@ -115,6 +115,9 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     needs: [build, create-release]
+    permissions:
+      id-token: write # Required for OIDC
+      contents: read # Allow checkout to read repository content
     
     steps:
     - name: Checkout code
@@ -144,8 +147,6 @@ jobs:
 
     - name: Publish to npm
       run: npm publish --access public
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Add npm badge comment
       uses: actions/github-script@v7
