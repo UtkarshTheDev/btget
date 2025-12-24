@@ -177,8 +177,8 @@ bun run build
 
 ## 📋 Roadmap
 
-- [x] **Resume Downloads**: Continue interrupted downloads (Auto-resume supported).
-- [ ] **Seeding Support**: Share completed downloads.
+- [ ] **Resume Downloads**: Continue interrupted downloads (Auto-resume supported).
+- [x] **Seeding Support**: Share completed downloads.
 - [ ] **Bandwidth Limiting**: Control upload/download speeds.
 - [ ] **Magnet Link Support**: Download directly from magnet links.
 - [x] **DHT Support**: Peer discovery via Distributed Hash Table.
