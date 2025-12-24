@@ -117,7 +117,7 @@ jobs:
     needs: [build, create-release]
     permissions:
       id-token: write # Required for OIDC
-      contents: read # Allow checkout to read repository content
+      contents: write # Allow creating commit comments
     
     steps:
     - name: Checkout code
