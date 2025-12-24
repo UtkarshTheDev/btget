@@ -146,7 +146,9 @@ jobs:
         npm pack --dry-run
 
     - name: Publish to npm
-      run: npm publish --access public
+      run: npm publish --access public --provenance
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Add npm badge comment
       uses: actions/github-script@v7
